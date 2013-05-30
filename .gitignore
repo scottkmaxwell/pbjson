@@ -1,0 +1,16 @@
+*.egg-info
+*.egg
+*.pyc
+*.so
+.DS_Store
+/MANIFEST
+/.coverage
+/coverage.xml
+/htmlcov
+/build
+/dist
+/docs
+/pbjson.xcodeproj/xcuserdata
+/pbjson.xcodeproj/project.xcworkspace/xcuserdata
+*.pbxuser
+*.perspectivev3
