@@ -2519,42 +2519,36 @@ static char nan_string_be[8] = {0x7f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 static char inf_string_le[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x7f};
 static char neginf_string_le[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0xff};
 static char nan_string_le[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf8, 0x7f};
-static char *inf_string = 0;
-static char *neginf_string = 0;
-static char *nan_string = 0;
+static double inf_value = 0.0;
+static double neginf_value = 0.0;
+static double nan_value = 0.0;
+static int endian = 0;
 
 // This is near identical to modp_dtoa above
 //   The differnce is noted below
 unsigned char modp_dtoa2(double value, char* str)
 {
     static const int prec = 9;
-    if (!inf_string) {
-        int endian = 1;
-        memcpy(str, &endian, 4);
-        if (str[0]) {
-            inf_string = inf_string_le;
-            neginf_string = neginf_string_le;
-            nan_string = nan_string_le;
+    if (!endian) {
+        endian = 1;
+        if (((const char*)&endian)[0]) {
+            memcpy(&inf_value, inf_string_le, 8);
+            memcpy(&neginf_value, neginf_string_le, 8);
+            memcpy(&nan_value, nan_string_le, 8);
         } else {
-            inf_string = inf_string_be;
-            neginf_string = neginf_string_be;
-            nan_string = nan_string_be;
+            memcpy(&inf_value, inf_string_be, 8);
+            memcpy(&neginf_value, neginf_string_be, 8);
+            memcpy(&nan_value, nan_string_be, 8);
         }
     }
-    memcpy(str, &value, 8);
 
-    /* Hacky test for NaN
-     * under -fast-math this won't work, but then you also won't
-     * have correct nan values anyways.  The alternative is
-     * to link with libmath (bad) or hack IEEE double bits (bad)
-     */
-    if (!memcmp(str, inf_string, 8)) {
+    if (value == inf_value) {
         return Enc_INF;
     }
-    if (!memcmp(str, neginf_string, 8)) {
+    if (value == neginf_value) {
         return Enc_NEGINF;
     }
-    if (!memcmp(str, nan_string, 8) || !(value == value)) {
+    if (value == nan_value || !(value == value)) {
         return Enc_NAN;
     }
     
