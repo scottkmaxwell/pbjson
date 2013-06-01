@@ -42,6 +42,9 @@
 #define Enc_FALSE 0
 #define Enc_TRUE 1
 #define Enc_NULL 2
+#define Enc_INF 3
+#define Enc_NEGINF 4
+#define Enc_NAN 5
 #define Enc_TERMINATED_LIST 0xc
 #define Enc_TERMINATOR 0xf
 #define Enc_INT 0x20
@@ -51,6 +54,12 @@
 #define Enc_BINARY 0xA0
 #define Enc_LIST 0xC0
 #define Enc_DICT 0xE0
+
+#define FltEnc_Plus 0xa
+#define FltEnc_Minus 0xb
+#define FltEnc_Decimal 0xd
+#define FltEnc_E 0xe
+
 
 #define BUFFER_SIZE 0x1000
 
@@ -201,16 +210,7 @@ static PyObject *
 JSON_ParseEncoding(PyObject *encoding);
 static PyObject *
 JSON_UnicodeFromChar(JSON_UNICHR c);
-static Py_ssize_t
-ascii_char_size(JSON_UNICHR c);
-static Py_ssize_t
-ascii_escape_char(JSON_UNICHR c, char *output, Py_ssize_t chars);
-static PyObject *
-ascii_escape_unicode(PyObject *pystr);
-static PyObject *
-ascii_escape_str(PyObject *pystr);
-static PyObject *
-py_encode_basestring_ascii(PyObject* self UNUSED, PyObject *pystr);
+
 #if PY_MAJOR_VERSION < 3
 static PyObject *
 join_list_string(PyObject *lst);
@@ -254,8 +254,6 @@ static int
 encoder_listencode_obj(PyEncoderObject *s, JSON_Accu *rval, PyObject *obj);
 static int
 encoder_listencode_dict(PyEncoderObject *s, JSON_Accu *rval, PyObject *dct);
-static PyObject *
-_encoded_const(PyObject *obj);
 static void
 raise_errmsg(char *msg, PyObject *s, Py_ssize_t end);
 static int
@@ -434,187 +432,6 @@ _convertPyInt_FromSsize_t(Py_ssize_t *size_ptr)
     /* Py_ssize_t to PyObject converter */
     return PyInt_FromSsize_t(*size_ptr);
 }
-
-static Py_ssize_t
-ascii_escape_char(JSON_UNICHR c, char *output, Py_ssize_t chars)
-{
-    /* Escape unicode code point c to ASCII escape sequences
-    in char *output. output must have at least 12 bytes unused to
-    accommodate an escaped surrogate pair "\uXXXX\uXXXX" */
-    if (S_CHAR(c)) {
-        output[chars++] = (char)c;
-    }
-    else {
-        output[chars++] = '\\';
-        switch (c) {
-            case '\\': output[chars++] = (char)c; break;
-            case '"': output[chars++] = (char)c; break;
-            case '\b': output[chars++] = 'b'; break;
-            case '\f': output[chars++] = 'f'; break;
-            case '\n': output[chars++] = 'n'; break;
-            case '\r': output[chars++] = 'r'; break;
-            case '\t': output[chars++] = 't'; break;
-            default:
-#if defined(Py_UNICODE_WIDE) || PY_MAJOR_VERSION >= 3
-                if (c >= 0x10000) {
-                    /* UTF-16 surrogate pair */
-                    JSON_UNICHR v = c - 0x10000;
-                    c = 0xd800 | ((v >> 10) & 0x3ff);
-                    output[chars++] = 'u';
-                    output[chars++] = "0123456789abcdef"[(c >> 12) & 0xf];
-                    output[chars++] = "0123456789abcdef"[(c >>  8) & 0xf];
-                    output[chars++] = "0123456789abcdef"[(c >>  4) & 0xf];
-                    output[chars++] = "0123456789abcdef"[(c      ) & 0xf];
-                    c = 0xdc00 | (v & 0x3ff);
-                    output[chars++] = '\\';
-                }
-#endif
-                output[chars++] = 'u';
-                output[chars++] = "0123456789abcdef"[(c >> 12) & 0xf];
-                output[chars++] = "0123456789abcdef"[(c >>  8) & 0xf];
-                output[chars++] = "0123456789abcdef"[(c >>  4) & 0xf];
-                output[chars++] = "0123456789abcdef"[(c      ) & 0xf];
-        }
-    }
-    return chars;
-}
-
-static Py_ssize_t
-ascii_char_size(JSON_UNICHR c)
-{
-    if (S_CHAR(c)) {
-        return 1;
-    }
-    else if (c == '\\' ||
-               c == '"'  ||
-               c == '\b' ||
-               c == '\f' ||
-               c == '\n' ||
-               c == '\r' ||
-               c == '\t') {
-        return 2;
-    }
-#if defined(Py_UNICODE_WIDE) || PY_MAJOR_VERSION >= 3
-    else if (c >= 0x10000U) {
-        return 2 * MIN_EXPANSION;
-    }
-#endif
-    else {
-        return MIN_EXPANSION;
-    }
-}
-
-static PyObject *
-ascii_escape_unicode(PyObject *pystr)
-{
-    /* Take a PyUnicode pystr and return a new ASCII-only escaped PyString */
-    Py_ssize_t i;
-    Py_ssize_t input_chars;
-    Py_ssize_t output_size;
-    Py_ssize_t chars;
-    PY2_UNUSED int kind;
-    void *data;
-    PyObject *rval;
-    char *output;
-
-    if (PyUnicode_READY(pystr))
-        return NULL;
-
-    kind = PyUnicode_KIND(pystr);
-    data = PyUnicode_DATA(pystr);
-    input_chars = PyUnicode_GetLength(pystr);
-    output_size = 2;
-    for (i = 0; i < input_chars; i++) {
-        output_size += ascii_char_size(PyUnicode_READ(kind, data, i));
-    }
-#if PY_MAJOR_VERSION >= 3
-    rval = PyUnicode_New(output_size, 127);
-    if (rval == NULL) {
-        return NULL;
-    }
-    assert(PyUnicode_KIND(rval) == PyUnicode_1BYTE_KIND);
-    output = (char *)PyUnicode_DATA(rval);
-#else
-    rval = PyString_FromStringAndSize(NULL, output_size);
-    if (rval == NULL) {
-        return NULL;
-    }
-    output = PyString_AS_STRING(rval);
-#endif
-    chars = 0;
-    output[chars++] = '"';
-    for (i = 0; i < input_chars; i++) {
-        chars = ascii_escape_char(PyUnicode_READ(kind, data, i), output, chars);
-    }
-    output[chars++] = '"';
-    assert(chars == output_size);
-    return rval;
-}
-
-#if PY_MAJOR_VERSION >= 3
-
-static PyObject *
-ascii_escape_str(PyObject *pystr)
-{
-    PyObject *rval;
-    PyObject *input = PyUnicode_DecodeUTF8(PyString_AS_STRING(pystr), PyString_GET_SIZE(pystr), NULL);
-    if (input == NULL)
-        return NULL;
-    rval = ascii_escape_unicode(input);
-    Py_DECREF(input);
-    return rval;
-}
-
-#else /* PY_MAJOR_VERSION >= 3 */
-
-static PyObject *
-ascii_escape_str(PyObject *pystr)
-{
-    /* Take a PyString pystr and return a new ASCII-only escaped PyString */
-    Py_ssize_t i;
-    Py_ssize_t input_chars;
-    Py_ssize_t output_size;
-    Py_ssize_t chars;
-    PyObject *rval;
-    char *output;
-    char *input_str;
-
-    input_chars = PyString_GET_SIZE(pystr);
-    input_str = PyString_AS_STRING(pystr);
-    output_size = 2;
-
-    /* Fast path for a string that's already ASCII */
-    for (i = 0; i < input_chars; i++) {
-        JSON_UNICHR c = (JSON_UNICHR)input_str[i];
-        if (c > 0x7f) {
-            /* We hit a non-ASCII character, bail to unicode mode */
-            PyObject *uni;
-            uni = PyUnicode_DecodeUTF8(input_str, input_chars, "strict");
-            if (uni == NULL) {
-                return NULL;
-            }
-            rval = ascii_escape_unicode(uni);
-            Py_DECREF(uni);
-            return rval;
-        }
-        output_size += ascii_char_size(c);
-    }
-
-    rval = PyString_FromStringAndSize(NULL, output_size);
-    if (rval == NULL) {
-        return NULL;
-    }
-    chars = 0;
-    output = PyString_AS_STRING(rval);
-    output[chars++] = '"';
-    for (i = 0; i < input_chars; i++) {
-        chars = ascii_escape_char((JSON_UNICHR)input_str[i], output, chars);
-    }
-    output[chars++] = '"';
-    assert(chars == output_size);
-    return rval;
-}
-#endif /* PY_MAJOR_VERSION < 3 */
 
 static PyObject *
 encoder_dict_iteritems(PyEncoderObject *s, PyObject *dct)
@@ -1273,25 +1090,6 @@ py_scanstring(PyObject* self UNUSED, PyObject *args)
 //    "\n"
 //    "Return an ASCII-only JSON representation of a Python string"
 //);
-
-static PyObject *
-py_encode_basestring_ascii(PyObject* self UNUSED, PyObject *pystr)
-{
-    /* Return an ASCII-only JSON representation of a Python string */
-    /* METH_O */
-    if (PyString_Check(pystr)) {
-        return ascii_escape_str(pystr);
-    }
-    else if (PyUnicode_Check(pystr)) {
-        return ascii_escape_unicode(pystr);
-    }
-    else {
-        PyErr_Format(PyExc_TypeError,
-                     "first argument must be a string, not %.80s",
-                     Py_TYPE(pystr)->tp_name);
-        return NULL;
-    }
-}
 
 static void
 scanner_dealloc(PyObject *self)
@@ -2588,44 +2386,6 @@ encoder_call(PyObject *self, PyObject *args, PyObject *kwds)
     return JSON_Accu_FinishAsList(&rval);
 }
 
-static PyObject *
-_encoded_const(PyObject *obj)
-{
-    /* Return the JSON string representation of None, True, False */
-    char c;
-    if (obj == Py_None) {
-        static PyObject *s_null = NULL;
-        if (s_null == NULL) {
-            c = Enc_NULL;
-            s_null = JSON_InternFromStringAndSize(&c,1);
-        }
-        Py_INCREF(s_null);
-        return s_null;
-    }
-    else if (obj == Py_True) {
-        static PyObject *s_true = NULL;
-        if (s_true == NULL) {
-            c = Enc_TRUE;
-            s_true = JSON_InternFromStringAndSize(&c,1);
-        }
-        Py_INCREF(s_true);
-        return s_true;
-    }
-    else if (obj == Py_False) {
-        static PyObject *s_false = NULL;
-        if (s_false == NULL) {
-            c = Enc_FALSE;
-            s_false = JSON_InternFromStringAndSize(&c,1);
-        }
-        Py_INCREF(s_false);
-        return s_false;
-    }
-    else {
-        PyErr_SetString(PyExc_ValueError, "not a const");
-        return NULL;
-    }
-}
-
 static int
 encode_type_and_length(JSON_Accu *rval, unsigned char token, int length)
 {
@@ -2772,45 +2532,266 @@ encode_long(JSON_Accu *rval, PyObject *obj)
     return ret;
 }
 
-static int
-encode_float(JSON_Accu *rval, PyObject *obj)
+static const double pow10[] = {1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000};
+
+static void strreverse(char* begin, char* end)
 {
-    static long endian = 0;
-    double d = PyFloat_AS_DOUBLE(obj);
-    unsigned char buffer[8];
-    if (!endian) {
-        endian = 1;
-        memcpy(buffer, &endian, 4);
-        endian = buffer[0] ? -1 : 1; //-1 is little-endian, 1 is big-endian
+    char aux;
+    while (end > begin) {
+        aux = *end, *end-- = *begin, *begin++ = aux;
     }
-    int i;
-    memcpy(buffer, &d, 8);
-    if (endian < 0) {
-        unsigned char t;
-        t = buffer[0];
-        buffer[0] = buffer[7];
-        buffer[7] = t;
-        t = buffer[1];
-        buffer[1] = buffer[6];
-        buffer[6] = t;
-        t = buffer[2];
-        buffer[2] = buffer[5];
-        buffer[5] = t;
-        t = buffer[3];
-        buffer[3] = buffer[4];
-        buffer[4] = t;
-    }
-    for (i=7; i>=0; i--) {
-        if (buffer[i]) {
-            break;
+}
+
+static char inf_string_be[8] = {0x7f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+static char neginf_string_be[8] = {0xff, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+static char nan_string_be[8] = {0x7f, 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+static char inf_string_le[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x7f};
+static char neginf_string_le[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0xff};
+static char nan_string_le[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf8, 0x7f};
+static char *inf_string = 0;
+static char *neginf_string = 0;
+static char *nan_string = 0;
+
+// This is near identical to modp_dtoa above
+//   The differnce is noted below
+unsigned char modp_dtoa2(double value, char* str)
+{
+    static const int prec = 9;
+    if (!inf_string) {
+        int endian = 1;
+        memcpy(str, &endian, 4);
+        if (str[0]) {
+            inf_string = inf_string_le;
+            neginf_string = neginf_string_le;
+            nan_string = nan_string_le;
+        } else {
+            inf_string = inf_string_be;
+            neginf_string = neginf_string_be;
+            nan_string = nan_string_be;
         }
     }
-    i += 1;
-    return encode_type_and_content(rval, Enc_FLOAT, buffer, i);
+    memcpy(str, &value, 8);
+
+    /* Hacky test for NaN
+     * under -fast-math this won't work, but then you also won't
+     * have correct nan values anyways.  The alternative is
+     * to link with libmath (bad) or hack IEEE double bits (bad)
+     */
+    if (!memcmp(str, inf_string, 8)) {
+        return Enc_INF;
+    }
+    if (!memcmp(str, neginf_string, 8)) {
+        return Enc_NEGINF;
+    }
+    if (!memcmp(str, nan_string, 8) || !(value == value)) {
+        return Enc_NAN;
+    }
+    
+    /* if input is larger than thres_max, revert to exponential */
+    const double thres_max = (double)(0x7FFFFFFF);
+    
+    int count;
+    double diff = 0.0;
+    char* wstr = str;
+    
+    /* we'll work in positive values and deal with the
+     negative sign issue later */
+    int neg = 0;
+    if (value < 0) {
+        neg = 1;
+        value = -value;
+    }
+    
+    
+    int whole = (int) value;
+    double tmp = (value - whole) * pow10[prec];
+    uint32_t frac = (uint32_t)(tmp);
+    diff = tmp - frac;
+    
+    if (diff > 0.5) {
+        ++frac;
+        /* handle rollover, e.g.  case 0.99 with prec 1 is 1.0  */
+        if (frac >= pow10[prec]) {
+            frac = 0;
+            ++whole;
+        }
+    } else if (diff == 0.5 && ((frac == 0) || (frac & 1))) {
+        /* if halfway, round up if odd, OR
+         if last digit is 0.  That last part is strange */
+        ++frac;
+    }
+    
+    /* for very large numbers switch back to native sprintf for exponentials.
+     anyone want to write code to replace this? */
+    /*
+     normal printf behavior is to print EVERY whole number digit
+     which can be 100s of characters overflowing your buffers == bad
+     */
+    if (value > thres_max) {
+        sprintf(str, "%e", neg ? -value : value);
+        if (str[0] == 'n') {
+            return Enc_NAN;
+        }
+        if (str[0] == 'i') {
+            return Enc_INF;
+        }
+        if (str[0] == '-' && str[1] == 'i') {
+            return Enc_NEGINF;
+        }
+        return Enc_FLOAT;
+    }
+    
+    if (prec == 0) {
+        diff = value - whole;
+        if (diff > 0.5) {
+            /* greater than 0.5, round up, e.g. 1.6 -> 2 */
+            ++whole;
+        } else if (diff == 0.5 && (whole & 1)) {
+            /* exactly 0.5 and ODD, then round up */
+            /* 1.5 -> 2, but 2.5 -> 2 */
+            ++whole;
+        }
+        
+        //vvvvvvvvvvvvvvvvvvv  Diff from modp_dto2
+    } else if (frac) {
+        count = prec;
+        // now do fractional part, as an unsigned number
+        // we know it is not 0 but we can have leading zeros, these
+        // should be removed
+        while (!(frac % 10)) {
+            --count;
+            frac /= 10;
+        }
+        //^^^^^^^^^^^^^^^^^^^  Diff from modp_dto2
+        
+        // now do fractional part, as an unsigned number
+        do {
+            --count;
+            *wstr++ = (char)(48 + (frac % 10));
+        } while (frac /= 10);
+        // add extra 0s
+        while (count-- > 0) *wstr++ = '0';
+        // add decimal
+        *wstr++ = '.';
+    }
+    
+    // do whole part
+    // Take care of sign
+    // Conversion. Number is reversed.
+    do *wstr++ = (char)(48 + (whole % 10)); while (whole /= 10);
+    if (neg) {
+        *wstr++ = '-';
+    }
+    *wstr='\0';
+    strreverse(str, wstr-1);
+    return Enc_FLOAT;
 }
 
 static int
-encode_key(PyEncoderObject *s, JSON_Accu *rval, PyObject *obj)
+encode_float_from_charstring(JSON_Accu *rval, const char* str, int len, unsigned char token)
+{
+    int rv = -1;
+    if (token != Enc_FLOAT) {
+        rv = JSON_Accu_Accumulate(rval, &token, 1);
+    }
+    else {
+        unsigned char c;
+        int nibble_index=0;
+        if (str[0] == '-') {
+            c = FltEnc_Minus << 4;
+            nibble_index=1;
+            ++str;
+            --len;
+        }
+        while (len > 0 && *str == '0') {
+            --len;
+            ++str;
+        }
+        if (len > 1 && str[len-1] == '0' && str[len-2] == '.') {
+            len -= 2;
+        }
+
+        rv = encode_type_and_length(rval, Enc_FLOAT, (len+1+nibble_index)/2);
+        for (int i=0; i<len && !rv; i++) {
+            char nibble = str[i];
+            if (nibble>='0' && nibble<='9') {
+                nibble -= '0';
+            }
+            else if (nibble == '-') {
+                nibble = FltEnc_Minus;
+            }
+            else if (nibble == '+') {
+                nibble = FltEnc_Plus;
+            }
+            else if (nibble == '.') {
+                nibble = FltEnc_Decimal;
+            }
+            else if (nibble == 'e') {
+                nibble = FltEnc_E;
+            }
+            if (!nibble_index) {
+                nibble_index = 1;
+                c = nibble << 4;
+            } else {
+                c |= nibble;
+                nibble_index = 0;
+                rv = JSON_Accu_Accumulate(rval, &c, 1);
+            }
+        }
+        if (!rv && nibble_index) {
+            c |= FltEnc_Decimal;
+            rv = JSON_Accu_Accumulate(rval, &c, 1);
+        }
+    }
+    return rv;
+}
+
+static int
+encode_float(JSON_Accu *rval, PyObject *obj)
+{
+    char buffer[0x80];
+    double d = PyFloat_AS_DOUBLE(obj);
+    unsigned char token = modp_dtoa2(d, buffer);
+    return encode_float_from_charstring(rval, buffer, strlen(buffer), token);
+}
+
+static int
+encode_decimal(JSON_Accu *rval, PyObject *obj)
+{
+    PyObject *encoded = PyObject_Str(obj);
+    if (!encoded) {
+        return -1;
+    }
+#if PY_MAJOR_VERSION >= 3
+    obj = encoded;
+    encoded = PyUnicode_AsUTF8String(obj);
+    if (!encoded) {
+        Py_XDECREF(obj);
+        return -1;
+    }
+#endif
+    const char* str = PyString_AS_STRING(encoded);
+    int len = PyString_GET_SIZE(encoded);
+    unsigned char token = Enc_FLOAT;
+    if (len) {
+        if (str[0] == 'I') {
+            token = Enc_INF;
+        }
+        else if (str[0] == 'N') {
+            token = Enc_NAN;
+        }
+        else if (str[0] == '-' && str[1] == 'I') {
+            token = Enc_NEGINF;
+        }
+    }
+    int rv = encode_float_from_charstring(rval, str, len, token);
+    Py_XDECREF(encoded);
+    return rv;
+}
+
+
+static int
+encode_key(JSON_Accu *rval, PyObject *obj)
 {
     PyObject *encoded = NULL;
     PyObject *value = NULL;
@@ -2955,11 +2936,9 @@ encoder_listencode_obj(PyEncoderObject *s, JSON_Accu *rval, PyObject *obj)
             rv = encoder_listencode_dict(s, rval, obj);
             Py_LeaveRecursiveCall();
         }
-//        else if (s->use_decimal && PyObject_TypeCheck(obj, (PyTypeObject *)s->Decimal)) {
-//            PyObject *encoded = PyObject_Str(obj);
-//            if (encoded != NULL)
-//                rv = _steal_accumulate(rval, encoded);
-//        }
+        else if (PyObject_TypeCheck(obj, (PyTypeObject *)s->Decimal)) {
+            rv = encode_decimal(rval, obj);
+        }
         else {
             PyObject *ident = NULL;
             PyObject *newobj;
@@ -3051,7 +3030,7 @@ encoder_listencode_dict(PyEncoderObject *s, JSON_Accu *rval, PyObject *dct)
                 if (JSON_Accu_Accumulate(rval, &l, 1)) {
                     goto bail;
                 }
-            } else if (encode_key(s, rval, key)) {
+            } else if (encode_key(rval, key)) {
                 goto bail;
             }
             if (encoder_listencode_obj(s, rval, value))

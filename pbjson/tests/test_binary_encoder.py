@@ -10,6 +10,7 @@ from time import time
 from marshal import dumps as marshal
 from pickle import dumps as pickle
 from pbjson.decoder import NaN, PosInf, NegInf
+from decimal import Decimal
 
 
 class TestBinaryEncoder(unittest.TestCase):
@@ -57,13 +58,43 @@ class TestBinaryEncoder(unittest.TestCase):
             self.assertEqual(2100, length)
             self.assertEqual(encoded[3:], contents)
 
+    def test_zero_float(self):
+        self.assertEqual(b'\x60', self.encoder.encode(0.0))
+
+    def test_int_float(self):
+        self.assertEqual(b'\x61\x4d', self.encoder.encode(4.0))
+        self.assertEqual(b'\x61\xb4', self.encoder.encode(-4.0))
+
+    def test_leading_zero_float(self):
+        self.assertEqual(b'\x62\xd2\x5d', self.encoder.encode(0.25))
+        self.assertEqual(b'\x62\xbd\x25', self.encoder.encode(-0.25))
+
     def test_short_float(self):
-        self.assertEqual(b'\x62\x40\x12', self.encoder.encode(4.5))
-        self.assertEqual(b'\x62\xc0\x12', self.encoder.encode(-4.5))
+        self.assertEqual(b'\x62\x4d\x5d', self.encoder.encode(4.5))
+        self.assertEqual(b'\x62\xb4\xd5', self.encoder.encode(-4.5))
 
     def test_long_float(self):
-        self.assertEqual(b'\x68\x3f\xe6\x66\x66\x66\x66\x66\x66', self.encoder.encode(0.7))
-        self.assertEqual(b'\x68\xbf\xe6\x66\x66\x66\x66\x66\x66', self.encoder.encode(-0.7))
+        self.assertEqual(b'\x65\x15\x2d\x79\x82\x3d', self.encoder.encode(152.79823))
+        self.assertEqual(b'\x65\xb1\x52\xd7\x98\x23', self.encoder.encode(-152.79823))
+
+    def test_zero_decimal(self):
+        self.assertEqual(b'\x60', self.encoder.encode(Decimal('0.0')))
+
+    def test_int_decimal(self):
+        self.assertEqual(b'\x61\x4d', self.encoder.encode(Decimal('4.0')))
+        self.assertEqual(b'\x61\xb4', self.encoder.encode(Decimal('-4.0')))
+
+    def test_leading_zero_decimal(self):
+        self.assertEqual(b'\x62\xd2\x5d', self.encoder.encode(Decimal('0.25')))
+        self.assertEqual(b'\x62\xbd\x25', self.encoder.encode(Decimal('-0.25')))
+
+    def test_short_decimal(self):
+        self.assertEqual(b'\x62\x4d\x5d', self.encoder.encode(Decimal('4.5')))
+        self.assertEqual(b'\x62\xb4\xd5', self.encoder.encode(Decimal('-4.5')))
+
+    def test_long_decimal(self):
+        self.assertEqual(b'\x70\x11\x15\x2d\x79\x82\x31\x23\x45\x67\x89\x01\x23\x45\x67\x89\x01\x20\x0d', self.encoder.encode(Decimal('152.79823123456789012345678901200')))
+        self.assertEqual(b'\x70\x11\xb1\x52\xd7\x98\x23\x12\x34\x56\x78\x90\x12\x34\x56\x78\x90\x12\x00', self.encoder.encode(Decimal('-152.79823123456789012345678901200')))
 
     def test_one_byte_int(self):
         self.assertEqual(b'\x21\x04', self.encoder.encode(4))
@@ -96,13 +127,13 @@ class TestBinaryEncoder(unittest.TestCase):
         self.assertEqual(b'\x0c\x20\x21\x01\x21\x02\x0f', self.encoder.encode(range(3)))
 
     def test_infinity(self):
-        self.assertEqual(b'\x62\x7f\xf0', self.encoder.encode(PosInf))
+        self.assertEqual(b'\x03', self.encoder.encode(PosInf))
 
     def test_negative_infinity(self):
-        self.assertEqual(b'\x62\xff\xf0', self.encoder.encode(NegInf))
+        self.assertEqual(b'\x04', self.encoder.encode(NegInf))
 
     def test_nan(self):
-        self.assertEqual(b'\x62\x7f\xf8', self.encoder.encode(NaN))
+        self.assertEqual(b'\x05', self.encoder.encode(NaN))
 
     def test_simple_dict(self):
         encoded = self.encoder.encode(
@@ -117,7 +148,7 @@ class TestBinaryEncoder(unittest.TestCase):
                 "toppings": ["jelly", "jam", "butter"]
             }
         )
-        self.assertEqual(b'\xe5\x06burned\x00\x0adimensions\xe2\x09thickness\x68\x3f\xe6\x66\x66\x66\x66\x66\x66\x05width\x62\x40\x12\x04name\x88the best\x05toast\x01\x08toppings\xc3\x85jelly\x83jam\x86butter', encoded)
+        self.assertEqual(b'\xe5\x06burned\x00\x0adimensions\xe2\x09thickness\x61\xd7\x05width\x62\x4d\x5d\x04name\x88the best\x05toast\x01\x08toppings\xc3\x85jelly\x83jam\x86butter', encoded)
 
     def test_dict_with_long_strings(self):
         encoded = self.encoder.encode(
@@ -132,7 +163,7 @@ class TestBinaryEncoder(unittest.TestCase):
                 "toppings": ["j" * 0x600, "k" * 0x672, "l" * 0x600]
             }
         )
-        self.assertEqual(b'\xe5\x06burned\x00\x0adimensions\xe2\x09thickness\x68\x3f\xe6\x66\x66\x66\x66\x66\x66\x05width\x62\x40\x12\x04name\x98\x50\x00' + b'a' * 0x5000 + b'\x05toast\x01\x08toppings\xc3\x96\x00' + b'j' * 0x600 + b'\x96\x72' + b'k' * 0x672 + b'\x96\x00' + b'l' * 0x600, encoded)
+        self.assertEqual(b'\xe5\x06burned\x00\x0adimensions\xe2\x09thickness\x61\xd7\x05width\x62\x4d\x5d\x04name\x98\x50\x00' + b'a' * 0x5000 + b'\x05toast\x01\x08toppings\xc3\x96\x00' + b'j' * 0x600 + b'\x96\x72' + b'k' * 0x672 + b'\x96\x00' + b'l' * 0x600, encoded)
 
     def test_repeating_keys(self):
         encoded = self.encoder.encode(
