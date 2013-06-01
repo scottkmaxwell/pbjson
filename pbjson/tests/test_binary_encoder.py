@@ -2,11 +2,12 @@ __author__ = 'Scott Maxwell'
 
 import unittest
 
-import json
+import pbjson
 from pbjson.compat import PY3
-from pbjson.encoder import PBJSONEncoder
+from pbjson.encoder import PBJSONEncoder, c_make_encoder
 from struct import unpack_from
 from time import time
+from json import dumps as json
 from marshal import dumps as marshal
 from pickle import dumps as pickle
 from pbjson.decoder import NaN, PosInf, NegInf
@@ -16,7 +17,7 @@ from decimal import Decimal
 class TestBinaryEncoder(unittest.TestCase):
 
     def setUp(self):
-        self.decoder = json.JSONDecoder()
+        self.decoder = pbjson.PBJSONDecoder()
         self.encoder = PBJSONEncoder(sort_keys=True)
 
     def test_encode_false(self):
@@ -124,7 +125,17 @@ class TestBinaryEncoder(unittest.TestCase):
         self.assertEqual(b'\xc3\x85jelly\x83jam\x86butter', self.encoder.encode(['jelly', 'jam', 'butter']))
 
     def test_generator_list(self):
-        self.assertEqual(b'\x0c\x20\x21\x01\x21\x02\x0f', self.encoder.encode(range(3)))
+        def sample_generator():
+            for x in range(3):
+                yield x
+        self.assertEqual(b'\x0c\x20\x21\x01\x21\x02\x0f', self.encoder.encode(sample_generator()))
+
+    def test_tuple(self):
+        self.assertEqual(b'\xc3\x20\x21\x01\x21\x02', self.encoder.encode((0, 1, 2)))
+
+    if PY3:
+        def test_range(self):
+            self.assertEqual(b'\xc3\x20\x21\x01\x21\x02', self.encoder.encode(range(3)))
 
     def test_infinity(self):
         self.assertEqual(b'\x03', self.encoder.encode(PosInf))
@@ -179,7 +190,7 @@ class TestBinaryEncoder(unittest.TestCase):
         self.assertEqual(b'\xe2\x09countries\xc3\xe2\x04code\x82us\x04name\x8DUnited States\xe2\x81\x82ca\x82\x86Canada\xe2\x81\x82mx\x82\x86Mexico\x06region\x21\x03', encoded)
 
     def test_dumps(self):
-        encoded = json.dumps(
+        encoded = pbjson.dumps(
             {
                 "countries": [
                     {"code": "us", "name": "United States"},
@@ -187,94 +198,94 @@ class TestBinaryEncoder(unittest.TestCase):
                     {"code": "mx", "name": "Mexico"}
                 ],
                 "region": 3,
-            }, cls=PBJSONEncoder, sort_keys=True
+            }, sort_keys=True
         )
         self.assertEqual(b'\xe2\x09countries\xc3\xe2\x04code\x82us\x04name\x8DUnited States\xe2\x81\x82ca\x82\x86Canada\xe2\x81\x82mx\x82\x86Mexico\x06region\x21\x03', encoded)
 
-    def test_speed(self):
-        sample = {
-            "countries": [
-                {"code": "us", "name": "United States"},
-                {"code": "ca", "name": "Canada"},
-                {"code": "mx", "name": "Mexico"}
-            ],
-            "dimensions": {
-                "thickness": 0.7,
-                "width": 4.5
-            },
-            "toast": True,
-            "wrapped": False,
-            "remote": None,
-            "elapsed": 0.047220706939697266,
-            "level": "WARNING",
-            "levelno": 30,
-            "port": 8443,
-            "statusCode": 400,
-            "ts": 1369935672.178207,
-            "entries": [
-                {
-                    "function": "func",
-                    "level": "WARNING",
-                    "levelno": 30,
-                    "module": "server.api",
-                    "text": "Invalid email or password",
-                    "ts": 1369935672.2237792
+    if c_make_encoder:
+        def test_speed(self):
+            sample = {
+                "countries": [
+                    {"code": "us", "name": "United States"},
+                    {"code": "ca", "name": "Canada"},
+                    {"code": "mx", "name": "Mexico"}
+                ],
+                "dimensions": {
+                    "thickness": 0.7,
+                    "width": 4.5
                 },
-                {
-                    "level": "INFO",
-                    "levelno": 20,
-                    "text": "POST /login 200",
-                    "ts": 1369935672.2253869
+                "toast": True,
+                "wrapped": False,
+                "remote": None,
+                "elapsed": 0.047220706939697266,
+                "level": "WARNING",
+                "levelno": 30,
+                "port": 8443,
+                "statusCode": 400,
+                "ts": 1369935672.178207,
+                "entries": [
+                    {
+                        "function": "func",
+                        "level": "WARNING",
+                        "levelno": 30,
+                        "module": "server.api",
+                        "text": "Invalid email or password",
+                        "ts": 1369935672.2237792
+                    },
+                    {
+                        "level": "INFO",
+                        "levelno": 20,
+                        "text": "POST /login 200",
+                        "ts": 1369935672.2253869
+                    }
+                ],
+                "request": {
+                    "hostname": "example.com",
+                    "method": "POST",
+                    "path": "/login",
+                    "params": {
+                        "email": "test@example.com",
+                        "format_type": "json",
+                        "pin": "********",
+                    }
+                },
+                "response": {
+                    "length": 56,
+                    "result": 200,
+                    "type": "application/json"
+                },
+                "user": {
+                    "country": "US",
+                    "ip": "198.168.0.10",
+                    "locale": "en-US"
                 }
-            ],
-            "request": {
-                "hostname": "example.com",
-                "method": "POST",
-                "path": "/login",
-                "params": {
-                    "email": "test@example.com",
-                    "format_type": "json",
-                    "pin": "********",
-                }
-            },
-            "response": {
-                "length": 56,
-                "result": 200,
-                "type": "application/json"
-            },
-            "user": {
-                "country": "US",
-                "ip": "198.168.0.10",
-                "locale": "en-US"
             }
-        }
-        iterations = 10000
+            iterations = 10000
 
-        start = time()
-        j = json.JSONEncoder(check_circular=False)
-        for i in range(iterations):
-            json_size = len(j.encode(sample))
-        json_time = time() - start
+            start = time()
+            for i in range(iterations):
+                json_size = len(json(sample))
+            json_time = time() - start
 
-        start = time()
-        j = PBJSONEncoder(check_circular=False)
-        for i in range(iterations):
-            binary_json_size = len(j.encode(sample))
-        binary_json_time = time() - start
+            start = time()
+            j = PBJSONEncoder(check_circular=False)
+            for i in range(iterations):
+                binary_json_size = len(j.encode(sample))
+            binary_json_time = time() - start
 
-        start = time()
-        for i in range(iterations):
-            marshal_size = len(marshal(sample))
-        marshal_time = time() - start
+            start = time()
+            for i in range(iterations):
+                marshal_size = len(marshal(sample))
+            marshal_time = time() - start
 
-        start = time()
-        for i in range(iterations):
-            pickle_size = len(pickle(sample))
-        pickle_time = time() - start
+            start = time()
+            for i in range(iterations):
+                pickle_size = len(pickle(sample))
+            pickle_time = time() - start
 
-        # noinspection PyUnboundLocalVariable
-        print('\nPBJSON: {} seconds, {} bytes\nJSON: {} seconds ({}%), {} bytes ({}%)\nMarshal: {} seconds ({}%), {} bytes ({}%)\nPickle: {} seconds ({}%), {} bytes ({}%)'.format(binary_json_time, binary_json_size, json_time, int(json_time / binary_json_time * 100), json_size, int(json_size / binary_json_size * 100), marshal_time, int(marshal_time / binary_json_time * 100), marshal_size, int(marshal_size / binary_json_size * 100), pickle_time, int(pickle_time / binary_json_time * 100), pickle_size, int(pickle_size / binary_json_size * 100)))
-        self.assertLess(binary_json_time, json_time)
+            # noinspection PyUnboundLocalVariable
+            print('\nPBJSON: {} seconds, {} bytes\nJSON: {} seconds ({}%), {} bytes ({}%)\nMarshal: {} seconds ({}%), {} bytes ({}%)\nPickle: {} seconds ({}%), {} bytes ({}%)'.format(binary_json_time, binary_json_size, json_time, int(json_time / binary_json_time * 100), json_size, int(json_size / binary_json_size * 100), marshal_time, int(marshal_time / binary_json_time * 100), marshal_size, int(marshal_size / binary_json_size * 100), pickle_time, int(pickle_time / binary_json_time * 100), pickle_size, int(pickle_size / binary_json_size * 100)))
+            self.assertLess(binary_json_time, json_time)
 
 
 def cycle():

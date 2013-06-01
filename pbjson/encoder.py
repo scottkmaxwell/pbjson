@@ -25,6 +25,9 @@ c_make_encoder = _import_speedups()
 FALSE = b'\x00'
 TRUE = b'\x01'
 NULL = b'\x02'
+INF = b'\x03'
+NEGINF = b'\x04'
+NAN = b'\x05'
 TERMINATED_LIST = b'\x0c'
 TERMINATOR = b'\x0f'
 INT = 0x20
@@ -34,6 +37,11 @@ STRING = 0x80
 BINARY = 0xA0
 LIST = 0xC0
 DICT = 0xE0
+
+FltEnc_Plus = 0xa
+FltEnc_Minus = 0xb
+FltEnc_Decimal = 0xd
+FltEnc_E = 0xe
 
 
 def encode_type_and_length(data_type, length):
@@ -89,8 +97,7 @@ class PBJSONEncoder(object):
 
     # noinspection PyUnusedLocal
     def __init__(self, skipkeys=False, check_circular=True, sort_keys=False,
-                 default=None, use_decimal=True, namedtuple_as_object=True,
-                 tuple_as_array=True, item_sort_key=None, for_json=False, **kwargs):
+                 default=None, for_json=False):
         """Constructor for PBJSONEncoder, with sensible defaults.
 
         If skipkeys is false, then it is a TypeError to attempt
@@ -110,20 +117,6 @@ class PBJSONEncoder(object):
         that can't otherwise be serialized.  It should return a JSON encodable
         version of the object or raise a ``TypeError``.
 
-        If use_decimal is true (not the default), ``decimal.Decimal`` will
-        be supported directly by the encoder. For the inverse, decode JSON
-        with ``parse_float=decimal.Decimal``.
-
-        If namedtuple_as_object is true (the default), objects with
-        ``_asdict()`` methods will be encoded as JSON objects.
-
-        If tuple_as_array is true (the default), tuple (and subclasses) will
-        be encoded as JSON arrays.
-
-        If specified, item_sort_key is a callable used to sort the items in
-        each dictionary. This is useful if you want to sort items other than
-        in alphabetical order by key.
-
         If for_json is true (not the default), objects with a ``for_json()``
         method will use the return value of that method for encoding as JSON
         instead of the object.
@@ -132,28 +125,27 @@ class PBJSONEncoder(object):
 
         self.skipkeys = skipkeys
         self.check_circular = check_circular
+        if sort_keys:
+            if sort_keys is True:
+                sort_keys = itemgetter(0)
+            elif not callable(sort_keys):
+                raise TypeError("sort_keys must be True, False or callable")
+        else:
+            sort_keys = None
         self.sort_keys = sort_keys
-        self.use_decimal = use_decimal
-        self.namedtuple_as_object = namedtuple_as_object
-        self.tuple_as_array = tuple_as_array
-        self.item_sort_key = item_sort_key
         self.for_json = for_json
         if default is not None:
             self.default = default
         if c_make_encoder is not None:
             self.encoder = c_make_encoder(
                 check_circular, self.default, self.sort_keys,
-                self.skipkeys, self.use_decimal,
-                self.namedtuple_as_object, self.tuple_as_array,
-                self.item_sort_key, self.for_json,
+                self.skipkeys, self.for_json,
                 Decimal)
         else:
             self.encoder = _make_iterencode(
                 check_circular, self.default,
                 self.sort_keys,
-                self.skipkeys, self.use_decimal,
-                self.namedtuple_as_object, self.tuple_as_array,
-                self.item_sort_key, self.for_json,
+                self.skipkeys, self.for_json,
                 Decimal=Decimal)
         self.c_encoder = None
 
@@ -199,12 +191,28 @@ class PBJSONEncoder(object):
         """
         return self.encoder(o)
 
+float_decode = {
+    '0': 0,
+    '1': 1,
+    '2': 2,
+    '3': 3,
+    '4': 4,
+    '5': 5,
+    '6': 6,
+    '7': 7,
+    '8': 8,
+    '9': 9,
+    '+': FltEnc_Plus,
+    '-': FltEnc_Minus,
+    '.': FltEnc_Decimal,
+    'e': FltEnc_E,
+    'E': FltEnc_E
+}
+
 
 # noinspection PyShadowingBuiltins
 def _make_iterencode(check_circular, _default,
-                     _sort_keys, _skipkeys,
-                     _use_decimal, _namedtuple_as_object, _tuple_as_array,
-                     _item_sort_key, _for_json,
+                     _sort_keys, _skipkeys, _for_json,
                      ## HACK: hand-optimized bytecode; turn globals into locals
                      _PY3=PY3,
                      ValueError=ValueError,
@@ -216,14 +224,9 @@ def _make_iterencode(check_circular, _default,
                      integer_types=integer_types,
                      isinstance=isinstance,
                      list=list,
-                     str=str,
-                     tuple=tuple):
+                     str=str):
     key_cache = {}
     markers = {} if check_circular else None
-    if _item_sort_key and not callable(_item_sort_key):
-        raise TypeError("item_sort_key must be None or callable")
-    elif _sort_keys and not _item_sort_key:
-        _item_sort_key = itemgetter(0)
 
     def _iterencode_list(lst):
         yield encode_type_and_length(LIST, len(lst))
@@ -254,18 +257,18 @@ def _make_iterencode(check_circular, _default,
             iteritems = dct.items()
         else:
             iteritems = dct.iteritems()
-        if _item_sort_key:
+        if _sort_keys:
             items = []
             for k, v in dct.items():
                 if not isinstance(k, string_types):
                     if k is None:
                         continue
                 items.append((k, v))
-            items.sort(key=_item_sort_key)
+            items.sort(key=_sort_keys)
         else:
             items = iteritems
         for key, value in items:
-            if not (_item_sort_key or isinstance(key, string_types)):
+            if not isinstance(key, string_types):
                 if key is None:
                     # _skipkeys must be True
                     continue
@@ -329,11 +332,36 @@ def _make_iterencode(check_circular, _default,
                     yield encode_type_and_content(token, encoded[0])
             else:
                 yield encode_type_and_length(INT, 0)
-        elif isinstance(o, float):
-            b = pack('!d', o)
-            while not b[-1]:
-                b = b[:-1]
-            yield encode_type_and_content(FLOAT, b)
+        elif isinstance(o, (float, Decimal)):
+            s = str(o)
+            encoded = []
+            nibble = None
+            if s[0] == 'n' or s[0] == 'N':
+                yield NAN
+            elif s[0] == 'i' or s[0] == 'I':
+                yield INF
+            else:
+                if s[0] == '-':
+                    nibble = FltEnc_Minus << 4
+                    s = s[1:]
+                    if s[0] == 'i' or s[0] == 'I':
+                        yield NEGINF
+                        return
+                if s[0] == '0':
+                    s = s[1:]
+                if s.endswith('.0'):
+                    s = s[:-2]
+                while s:
+                    c, s = float_decode[s[0]], s[1:]
+                    if nibble is None:
+                        nibble = c << 4
+                    else:
+                        encoded.append(pack('B', nibble | c))
+                        nibble = None
+                if nibble is not None:
+                    encoded.append(pack('B', nibble | FltEnc_Decimal))
+                encoded = b''.join(encoded)
+                yield encode_type_and_content(FLOAT, encoded)
         else:
             for_json = _for_json and getattr(o, 'for_json', None)
             if for_json and callable(for_json):
@@ -343,38 +371,41 @@ def _make_iterencode(check_circular, _default,
                 for chunk in _iterencode_list(o):
                     yield chunk
             else:
-                _asdict = _namedtuple_as_object and getattr(o, '_asdict', None)
+                _asdict = isinstance(o, tuple) and getattr(o, '_asdict', None)
                 if _asdict and callable(_asdict):
                     for chunk in _iterencode_dict(_asdict()):
-                        yield chunk
-                elif _tuple_as_array and isinstance(o, tuple):
-                    for chunk in _iterencode_list(o):
                         yield chunk
                 elif isinstance(o, dict):
                     for chunk in _iterencode_dict(o):
                         yield chunk
-                # elif _use_decimal and isinstance(o, Decimal):
-                #     yield str(o)
                 else:
+                    try:
+                        iter(o)
+                    except TypeError:
+                        pass
+                    else:
+                        try:
+                            len(o)
+                        except Exception as e:
+                            pass
+                        else:
+                            for chunk in _iterencode_list(o):
+                                yield chunk
+                            return
+                        yield TERMINATED_LIST
+                        for item in o:
+                            for chunk in _iterencode(item):
+                                yield chunk
+                        yield TERMINATOR
+                        return
                     if check_circular:
                         markerid = id(o)
                         if markerid in markers:
                             raise ValueError("Circular reference detected")
                         markers[markerid] = o
-                    try:
-                        o = _default(o)
-                    except TypeError as e:
-                        yield TERMINATED_LIST
-                        try:
-                            for item in o:
-                                for chunk in _iterencode(item):
-                                    yield chunk
-                            yield TERMINATOR
-                        except TypeError:
-                            raise e
-                    else:
-                        for chunk in _iterencode(o):
-                            yield chunk
+                    o = _default(o)
+                    for chunk in _iterencode(o):
+                        yield chunk
                     if check_circular:
                         # noinspection PyUnboundLocalVariable
                         del markers[markerid]

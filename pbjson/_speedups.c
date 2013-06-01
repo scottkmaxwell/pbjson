@@ -187,10 +187,6 @@ typedef struct _PyEncoderObject {
     PyObject *skipkeys_bool;
     int check_circular;
     int skipkeys;
-    int use_decimal;
-    int namedtuple_as_object;
-    int tuple_as_array;
-    PyObject *item_sort_key;
     PyObject *item_sort_kw;
     int for_json;
 } PyEncoderObject;
@@ -200,7 +196,6 @@ static PyMemberDef encoder_members[] = {
     {"sort_keys", T_OBJECT, offsetof(PyEncoderObject, sort_keys), READONLY, "sort_keys"},
     /* Python 2.5 does not support T_BOOl */
     {"skipkeys", T_OBJECT, offsetof(PyEncoderObject, skipkeys_bool), READONLY, "skipkeys"},
-    {"item_sort_key", T_OBJECT, offsetof(PyEncoderObject, item_sort_key), READONLY, "item_sort_key"},
     {NULL}
 };
 
@@ -392,13 +387,15 @@ static int
 _is_namedtuple(PyObject *obj)
 {
     int rval = 0;
-    PyObject *_asdict = PyObject_GetAttrString(obj, "_asdict");
-    if (_asdict == NULL) {
-        PyErr_Clear();
-        return 0;
+    if (PyTuple_Check(obj)) {
+        PyObject *_asdict = PyObject_GetAttrString(obj, "_asdict");
+        if (_asdict == NULL) {
+            PyErr_Clear();
+            return 0;
+        }
+        rval = PyCallable_Check(_asdict);
+        Py_DECREF(_asdict);
     }
-    rval = PyCallable_Check(_asdict);
-    Py_DECREF(_asdict);
     return rval;
 }
 
@@ -2288,7 +2285,6 @@ encoder_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     if (s != NULL) {
         s->defaultfn = NULL;
         s->sort_keys = NULL;
-        s->item_sort_key = NULL;
         s->item_sort_kw = NULL;
         s->Decimal = NULL;
     }
@@ -2299,50 +2295,27 @@ static int
 encoder_init(PyObject *self, PyObject *args, PyObject *kwds)
 {
     /* initialize Encoder object */
-    static char *kwlist[] = {"check_circular", "default", "sort_keys", "skipkeys", "use_decimal", "namedtuple_as_object", "tuple_as_array", "item_sort_key", "for_json", "Decimal", NULL};
+    static char *kwlist[] = {"check_circular", "default", "sort_keys", "skipkeys", "for_json", "Decimal", NULL};
 
     PyEncoderObject *s;
     PyObject *check_circular, *defaultfn;
-    PyObject *sort_keys, *skipkeys;
-    PyObject *use_decimal, *namedtuple_as_object, *tuple_as_array;
-    PyObject *item_sort_key, *for_json;
+    PyObject *sort_keys, *skipkeys, *for_json;
     PyObject *Decimal;
 
     assert(PyEncoder_Check(self));
     s = (PyEncoderObject *)self;
 
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOOOOOOOOO:make_encoder", kwlist,
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOOOOO:make_encoder", kwlist,
         &check_circular, &defaultfn,
-        &sort_keys, &skipkeys, &use_decimal,
-        &namedtuple_as_object, &tuple_as_array,
-        &item_sort_key, &for_json, &Decimal))
+        &sort_keys, &skipkeys,
+        &for_json, &Decimal))
         return -1;
 
     s->check_circular = PyObject_IsTrue(check_circular);
     s->defaultfn = defaultfn;
     s->skipkeys_bool = skipkeys;
     s->skipkeys = PyObject_IsTrue(skipkeys);
-    s->use_decimal = PyObject_IsTrue(use_decimal);
-    s->namedtuple_as_object = PyObject_IsTrue(namedtuple_as_object);
-    s->tuple_as_array = PyObject_IsTrue(tuple_as_array);
-    if (item_sort_key != Py_None) {
-        if (!PyCallable_Check(item_sort_key))
-            PyErr_SetString(PyExc_TypeError, "item_sort_key must be None or callable");
-    }
-    else if (PyObject_IsTrue(sort_keys)) {
-        static PyObject *itemgetter0 = NULL;
-        if (!itemgetter0) {
-            PyObject *operator = PyImport_ImportModule("operator");
-            if (!operator)
-                return -1;
-            itemgetter0 = PyObject_CallMethod(operator, "itemgetter", "i", 0);
-            Py_DECREF(operator);
-        }
-        item_sort_key = itemgetter0;
-        if (!item_sort_key)
-            return -1;
-    }
-    if (item_sort_key == Py_None) {
+    if (sort_keys == Py_None) {
         Py_INCREF(Py_None);
         s->item_sort_kw = Py_None;
     }
@@ -2350,18 +2323,16 @@ encoder_init(PyObject *self, PyObject *args, PyObject *kwds)
         s->item_sort_kw = PyDict_New();
         if (s->item_sort_kw == NULL)
             return -1;
-        if (PyDict_SetItemString(s->item_sort_kw, "key", item_sort_key))
+        if (PyDict_SetItemString(s->item_sort_kw, "key", sort_keys))
             return -1;
     }
     s->sort_keys = sort_keys;
-    s->item_sort_key = item_sort_key;
     s->Decimal = Decimal;
     s->for_json = PyObject_IsTrue(for_json);
 
     Py_INCREF(s->defaultfn);
     Py_INCREF(s->skipkeys_bool);
     Py_INCREF(s->sort_keys);
-    Py_INCREF(s->item_sort_key);
     Py_INCREF(s->Decimal);
     return 0;
 }
@@ -2913,7 +2884,7 @@ encoder_listencode_obj(PyEncoderObject *s, JSON_Accu *rval, PyObject *obj)
             }
             Py_LeaveRecursiveCall();
         }
-        else if (s->namedtuple_as_object && _is_namedtuple(obj)) {
+        else if (_is_namedtuple(obj)) {
             PyObject *newobj;
             if (Py_EnterRecursiveCall(" while encoding a JSON object"))
                 return rv;
@@ -2922,12 +2893,6 @@ encoder_listencode_obj(PyEncoderObject *s, JSON_Accu *rval, PyObject *obj)
                 rv = encoder_listencode_dict(s, rval, newobj);
                 Py_DECREF(newobj);
             }
-            Py_LeaveRecursiveCall();
-        }
-        else if (PyList_Check(obj) || (s->tuple_as_array && PyTuple_Check(obj))) {
-            if (Py_EnterRecursiveCall(" while encoding a JSON object"))
-                return rv;
-            rv = encoder_listencode_list(s, rval, obj);
             Py_LeaveRecursiveCall();
         }
         else if (PyDict_Check(obj)) {
@@ -2939,45 +2904,43 @@ encoder_listencode_obj(PyEncoderObject *s, JSON_Accu *rval, PyObject *obj)
         else if (PyObject_TypeCheck(obj, (PyTypeObject *)s->Decimal)) {
             rv = encode_decimal(rval, obj);
         }
-        else {
-            PyObject *ident = NULL;
-            PyObject *newobj;
-            if (s->check_circular && check_circular(rval, obj, &ident)) {
-                break;
-            }
+        else if (PyObject_Length(obj) >= 0) {
             if (Py_EnterRecursiveCall(" while encoding a JSON object"))
                 return rv;
-            newobj = PyObject_CallFunctionObjArgs(s->defaultfn, obj, NULL);
-            if (newobj == NULL) {
-                PyObject *iter;
-                PyObject *ptype, *pvalue, *ptraceback;
-                PyErr_Fetch(&ptype, &pvalue, &ptraceback);
-                iter = PyObject_GetIter(obj);
-                if (!iter) {
-                    PyErr_Restore(ptype, pvalue, ptraceback);
-                }
-                Py_XDECREF(ptype);
-                Py_XDECREF(pvalue);
-                Py_XDECREF(ptraceback);
-                if (iter) {
-                    PyErr_Clear();
-                    rv = encoder_listencode_sequence(s, rval, iter);
-                    Py_XDECREF(iter);
-                }
-            } else {
-                rv = encoder_listencode_obj(s, rval, newobj);
-                Py_DECREF(newobj);
-            }
+            rv = encoder_listencode_list(s, rval, obj);
             Py_LeaveRecursiveCall();
-            if (rv) {
-                rv = -1;
-            }
-            else if (ident != NULL) {
-                if (PyDict_DelItem(rval->markers, ident)) {
+        }
+        else {
+            PyErr_Clear();
+            if (Py_EnterRecursiveCall(" while encoding a JSON object"))
+                return rv;
+            PyObject *iter = PyObject_GetIter(obj);
+            if (iter) {
+                rv = encoder_listencode_sequence(s, rval, iter);
+                Py_XDECREF(iter);
+            } else {
+                PyObject *ident = NULL;
+                PyObject *newobj;
+                if (s->check_circular && check_circular(rval, obj, &ident)) {
+                    break;
+                }
+                PyErr_Clear();
+                newobj = PyObject_CallFunctionObjArgs(s->defaultfn, obj, NULL);
+                if (newobj) {
+                    rv = encoder_listencode_obj(s, rval, newobj);
+                    Py_DECREF(newobj);
+                }
+                if (rv) {
                     rv = -1;
                 }
+                else if (ident != NULL) {
+                    if (PyDict_DelItem(rval->markers, ident)) {
+                        rv = -1;
+                    }
+                }
+                Py_XDECREF(ident);
             }
-            Py_XDECREF(ident);
+            Py_LeaveRecursiveCall();
         }
     } while (0);
     return rv;
@@ -3066,7 +3029,7 @@ encoder_listencode_list(PyEncoderObject *s, JSON_Accu *rval, PyObject *seq)
     PyObject *iter = NULL;
     PyObject *obj = NULL;
     PyObject *ident = NULL;
-    int len = PyList_GET_SIZE(seq);
+    int len = PyObject_Length(seq);
     if (encode_type_and_length(rval, Enc_LIST, len)) {
         return -1;
     }
@@ -3145,7 +3108,6 @@ encoder_traverse(PyObject *self, visitproc visit, void *arg)
     Py_VISIT(s->defaultfn);
     Py_VISIT(s->sort_keys);
     Py_VISIT(s->item_sort_kw);
-    Py_VISIT(s->item_sort_key);
     Py_VISIT(s->Decimal);
     return 0;
 }
@@ -3161,7 +3123,6 @@ encoder_clear(PyObject *self)
     Py_CLEAR(s->skipkeys_bool);
     Py_CLEAR(s->sort_keys);
     Py_CLEAR(s->item_sort_kw);
-    Py_CLEAR(s->item_sort_key);
     Py_CLEAR(s->Decimal);
     return 0;
 }

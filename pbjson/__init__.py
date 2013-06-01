@@ -91,12 +91,13 @@ __author__ = 'Scott Maxwell <scott@codecobblers.com>'
 from decimal import Decimal
 
 from .scanner import JSONDecodeError as PBJSONDecodeError
-from .decoder import JSONDecoder
+from .decoder import PBJSONDecoder
 from .encoder import PBJSONEncoder
 
 
 def _import_c_make_encoder():
     try:
+        # noinspection PyUnresolvedReferences
         from . import _speedups
         return _speedups.make_encoder
     except ImportError:
@@ -106,20 +107,11 @@ _default_encoder = PBJSONEncoder(
     skipkeys=False,
     check_circular=True,
     default=None,
-    use_decimal=True,
-    namedtuple_as_object=True,
-    tuple_as_array=True,
-    item_sort_key=None,
     for_json=False,
 )
 
 
-def dump(obj, fp, skipkeys=False, ensure_ascii=True, check_circular=True,
-         allow_nan=True, cls=None, indent=None, separators=None,
-         encoding='utf-8', default=None, use_decimal=True,
-         namedtuple_as_object=True, tuple_as_array=True,
-         bigint_as_string=False, sort_keys=False, item_sort_key=None,
-         for_json=False, ignore_nan=False, **kw):
+def dump(obj, fp, skipkeys=False, check_circular=True, default=None, sort_keys=False, for_json=False):
     """Serialize ``obj`` as a JSON formatted stream to ``fp`` (a
     ``.write()``-supporting file-like object).
 
@@ -127,220 +119,64 @@ def dump(obj, fp, skipkeys=False, ensure_ascii=True, check_circular=True,
     (``str``, ``unicode``, ``int``, ``long``, ``float``, ``bool``, ``None``)
     will be skipped instead of raising a ``TypeError``.
 
-    If *ensure_ascii* is false, then the some chunks written to ``fp``
-    may be ``unicode`` instances, subject to normal Python ``str`` to
-    ``unicode`` coercion rules. Unless ``fp.write()`` explicitly
-    understands ``unicode`` (as in ``codecs.getwriter()``) this is likely
-    to cause an error.
-
     If *check_circular* is false, then the circular reference check
     for container types will be skipped and a circular reference will
     result in an ``OverflowError`` (or worse).
 
-    If *allow_nan* is false, then it will be a ``ValueError`` to
-    serialize out of range ``float`` values (``nan``, ``inf``, ``-inf``)
-    in strict compliance of the original JSON specification, instead of using
-    the JavaScript equivalents (``NaN``, ``Infinity``, ``-Infinity``). See
-    *ignore_nan* for ECMA-262 compliant behavior.
-
-    If *indent* is a string, then JSON array elements and object members
-    will be pretty-printed with a newline followed by that string repeated
-    for each level of nesting. ``None`` (the default) selects the most compact
-    representation without any newlines. For backwards compatibility with
-    versions of simplejson earlier than 2.1.0, an integer is also accepted
-    and is converted to a string with that many spaces.
-
-    If specified, *separators* should be an
-    ``(item_separator, key_separator)`` tuple.  The default is ``(', ', ': ')``
-    if *indent* is ``None`` and ``(',', ': ')`` otherwise.  To get the most
-    compact JSON representation, you should specify ``(',', ':')`` to eliminate
-    whitespace.
-
-    *encoding* is the character encoding for str instances, default is UTF-8.
-
     *default(obj)* is a function that should return a serializable version
     of obj or raise ``TypeError``. The default simply raises ``TypeError``.
 
-    If *use_decimal* is true (default: ``True``) then decimal.Decimal
-    will be natively serialized to JSON with full precision.
-
-    If *namedtuple_as_object* is true (default: ``True``),
-    :class:`tuple` subclasses with ``_asdict()`` methods will be encoded
-    as JSON objects.
-
-    If *tuple_as_array* is true (default: ``True``),
-    :class:`tuple` (and subclasses) will be encoded as JSON arrays.
-
-    If *bigint_as_string* is true (default: ``False``), ints 2**53 and higher
-    or lower than -2**53 will be encoded as strings. This is to avoid the
-    rounding that happens in Javascript otherwise. Note that this is still a
-    lossy operation that will not round-trip correctly and should be used
-    sparingly.
-
-    If specified, *item_sort_key* is a callable used to sort the items in
-    each dictionary. This is useful if you want to sort items other than
-    in alphabetical order by key. This option takes precedence over
-    *sort_keys*.
-
     If *sort_keys* is true (default: ``False``), the output of dictionaries
-    will be sorted by item.
+    will be sorted by item. *sort_keys* can also be a callable to sort by
+    key and/or value.
 
     If *for_json* is true (default: ``False``), objects with a ``for_json()``
     method will use the return value of that method for encoding as JSON
     instead of the object.
 
-    If *ignore_nan* is true (default: ``False``), then out of range
-    :class:`float` values (``nan``, ``inf``, ``-inf``) will be serialized as
-    ``null`` in compliance with the ECMA-262 specification. If true, this will
-    override *allow_nan*.
-
-    To use a custom ``JSONEncoder`` subclass (e.g. one that overrides the
-    ``.default()`` method to serialize additional types), specify it with
-    the ``cls`` kwarg. NOTE: You should use *default* or *for_json* instead
-    of subclassing whenever possible.
-
     """
     # cached encoder
-    if (not skipkeys and ensure_ascii and
-        check_circular and allow_nan and
-        cls is None and indent is None and separators is None and
-        encoding == 'utf-8' and default is None and use_decimal
-        and namedtuple_as_object and tuple_as_array
-        and not bigint_as_string and not item_sort_key
-        and not for_json and not ignore_nan and not kw
-    ):
+    if not skipkeys and check_circular and default is None and not for_json:
         iterable = _default_encoder.iterencode(obj)
     else:
-        if cls is None:
-            cls = PBJSONEncoder
-        iterable = cls(skipkeys=skipkeys, ensure_ascii=ensure_ascii,
-                       check_circular=check_circular, allow_nan=allow_nan, indent=indent,
-                       separators=separators, encoding=encoding,
-                       default=default, use_decimal=use_decimal,
-                       namedtuple_as_object=namedtuple_as_object,
-                       tuple_as_array=tuple_as_array,
-                       bigint_as_string=bigint_as_string,
-                       sort_keys=sort_keys,
-                       item_sort_key=item_sort_key,
-                       for_json=for_json,
-                       ignore_nan=ignore_nan,
-                       **kw).iterencode(obj)
+        iterable = PBJSONEncoder(skipkeys=skipkeys, check_circular=check_circular, default=default, sort_keys=sort_keys, for_json=for_json).iterencode(obj)
     # could accelerate with writelines in some versions of Python, at
     # a debuggability cost
     for chunk in iterable:
         fp.write(chunk)
 
 
-def dumps(obj, skipkeys=False, ensure_ascii=True, check_circular=True,
-          allow_nan=True, cls=None, indent=None, separators=None,
-          encoding='utf-8', default=None, use_decimal=True,
-          namedtuple_as_object=True, tuple_as_array=True,
-          bigint_as_string=False, sort_keys=False, item_sort_key=None,
-          for_json=False, ignore_nan=False, **kw):
+def dumps(obj, skipkeys=False, check_circular=True, default=None, sort_keys=False, for_json=False):
     """Serialize ``obj`` to a JSON formatted ``str``.
 
     If ``skipkeys`` is false then ``dict`` keys that are not basic types
     (``str``, ``unicode``, ``int``, ``long``, ``float``, ``bool``, ``None``)
     will be skipped instead of raising a ``TypeError``.
 
-    If ``ensure_ascii`` is false, then the return value will be a
-    ``unicode`` instance subject to normal Python ``str`` to ``unicode``
-    coercion rules instead of being escaped to an ASCII ``str``.
-
     If ``check_circular`` is false, then the circular reference check
     for container types will be skipped and a circular reference will
     result in an ``OverflowError`` (or worse).
 
-    If ``allow_nan`` is false, then it will be a ``ValueError`` to
-    serialize out of range ``float`` values (``nan``, ``inf``, ``-inf``) in
-    strict compliance of the JSON specification, instead of using the
-    JavaScript equivalents (``NaN``, ``Infinity``, ``-Infinity``).
-
-    If ``indent`` is a string, then JSON array elements and object members
-    will be pretty-printed with a newline followed by that string repeated
-    for each level of nesting. ``None`` (the default) selects the most compact
-    representation without any newlines. For backwards compatibility with
-    versions of simplejson earlier than 2.1.0, an integer is also accepted
-    and is converted to a string with that many spaces.
-
-    If specified, ``separators`` should be an
-    ``(item_separator, key_separator)`` tuple.  The default is ``(', ', ': ')``
-    if *indent* is ``None`` and ``(',', ': ')`` otherwise.  To get the most
-    compact JSON representation, you should specify ``(',', ':')`` to eliminate
-    whitespace.
-
-    ``encoding`` is the character encoding for str instances, default is UTF-8.
-
     ``default(obj)`` is a function that should return a serializable version
     of obj or raise TypeError. The default simply raises TypeError.
 
-    If *use_decimal* is true (default: ``True``) then decimal.Decimal
-    will be natively serialized to JSON with full precision.
-
-    If *namedtuple_as_object* is true (default: ``True``),
-    :class:`tuple` subclasses with ``_asdict()`` methods will be encoded
-    as JSON objects.
-
-    If *tuple_as_array* is true (default: ``True``),
-    :class:`tuple` (and subclasses) will be encoded as JSON arrays.
-
-    If *bigint_as_string* is true (not the default), ints 2**53 and higher
-    or lower than -2**53 will be encoded as strings. This is to avoid the
-    rounding that happens in Javascript otherwise.
-
-    If specified, *item_sort_key* is a callable used to sort the items in
-    each dictionary. This is useful if you want to sort items other than
-    in alphabetical order by key. This option takes precendence over
-    *sort_keys*.
-
     If *sort_keys* is true (default: ``False``), the output of dictionaries
-    will be sorted by item.
+    will be sorted by item. *sort_keys* can also be a callable to sort by
+    key and/or value.
 
     If *for_json* is true (default: ``False``), objects with a ``for_json()``
     method will use the return value of that method for encoding as JSON
     instead of the object.
 
-    If *ignore_nan* is true (default: ``False``), then out of range
-    :class:`float` values (``nan``, ``inf``, ``-inf``) will be serialized as
-    ``null`` in compliance with the ECMA-262 specification. If true, this will
-    override *allow_nan*.
-
-    To use a custom ``JSONEncoder`` subclass (e.g. one that overrides the
-    ``.default()`` method to serialize additional types), specify it with
-    the ``cls`` kwarg. NOTE: You should use *default* instead of subclassing
-    whenever possible.
-
     """
     # cached encoder
-    if (not skipkeys and ensure_ascii and
-        check_circular and allow_nan and
-        cls is None and indent is None and separators is None and
-        encoding == 'utf-8' and default is None and use_decimal
-        and namedtuple_as_object and tuple_as_array
-        and not bigint_as_string and not sort_keys
-        and not item_sort_key and not for_json
-        and not ignore_nan and not kw
-    ):
+    if not skipkeys and check_circular and default is None and not sort_keys and not for_json:
         return _default_encoder.encode(obj)
-    if cls is None:
-        cls = PBJSONEncoder
-    return cls(
-        skipkeys=skipkeys, ensure_ascii=ensure_ascii,
-        check_circular=check_circular, allow_nan=allow_nan, indent=indent,
-        separators=separators, encoding=encoding, default=default,
-        use_decimal=use_decimal,
-        namedtuple_as_object=namedtuple_as_object,
-        tuple_as_array=tuple_as_array,
-        bigint_as_string=bigint_as_string,
-        sort_keys=sort_keys,
-        item_sort_key=item_sort_key,
-        for_json=for_json,
-        ignore_nan=ignore_nan,
-        **kw).encode(obj)
+    return PBJSONEncoder(skipkeys=skipkeys, check_circular=check_circular, default=default, sort_keys=sort_keys, for_json=for_json).encode(obj)
 
 
-_default_decoder = JSONDecoder(encoding=None, object_hook=None,
-                               object_pairs_hook=None)
+_default_decoder = PBJSONDecoder(encoding=None, object_hook=None,
+                                 object_pairs_hook=None)
 
 
 def load(fp, encoding=None, cls=None, object_hook=None, parse_float=None,
@@ -457,7 +293,7 @@ def loads(s, encoding=None, cls=None, object_hook=None, parse_float=None,
             and not use_decimal and not kw):
         return _default_decoder.decode(s)
     if cls is None:
-        cls = JSONDecoder
+        cls = PBJSONDecoder
     if object_hook is not None:
         kw['object_hook'] = object_hook
     if object_pairs_hook is not None:
@@ -490,7 +326,7 @@ def _toggle_speedups(enabled):
         scan.make_scanner = scan.py_make_scanner
     dec.make_scanner = scan.make_scanner
     global _default_decoder
-    _default_decoder = JSONDecoder(
+    _default_decoder = PBJSONDecoder(
         encoding=None,
         object_hook=None,
         object_pairs_hook=None,
@@ -498,12 +334,7 @@ def _toggle_speedups(enabled):
     global _default_encoder
     _default_encoder = PBJSONEncoder(
         skipkeys=False,
-        ensure_ascii=True,
         check_circular=True,
-        allow_nan=True,
-        indent=None,
-        separators=None,
-        encoding='utf-8',
         default=None,
     )
 
