@@ -88,9 +88,6 @@ __all__ = [
 
 __author__ = 'Scott Maxwell <scott@codecobblers.com>'
 
-from decimal import Decimal
-
-from .scanner import JSONDecodeError as PBJSONDecodeError
 from .decoder import PBJSONDecoder
 from .encoder import PBJSONEncoder
 
@@ -103,16 +100,11 @@ def _import_c_make_encoder():
     except ImportError:
         return None
 
-_default_encoder = PBJSONEncoder(
-    skipkeys=False,
-    check_circular=True,
-    default=None,
-    for_json=False,
-)
+_default_encoder = PBJSONEncoder()
 
 
 def dump(obj, fp, skipkeys=False, check_circular=True, default=None, sort_keys=False, for_json=False):
-    """Serialize ``obj`` as a JSON formatted stream to ``fp`` (a
+    """Serialize ``obj`` as a Packed Binary JSON stream to ``fp`` (a
     ``.write()``-supporting file-like object).
 
     If *skipkeys* is true then ``dict`` keys that are not basic types
@@ -147,7 +139,7 @@ def dump(obj, fp, skipkeys=False, check_circular=True, default=None, sort_keys=F
 
 
 def dumps(obj, skipkeys=False, check_circular=True, default=None, sort_keys=False, for_json=False):
-    """Serialize ``obj`` to a JSON formatted ``str``.
+    """Serialize ``obj`` to a Packed Binary JSON formatted binary string.
 
     If ``skipkeys`` is false then ``dict`` keys that are not basic types
     (``str``, ``unicode``, ``int``, ``long``, ``float``, ``bool``, ``None``)
@@ -175,172 +167,56 @@ def dumps(obj, skipkeys=False, check_circular=True, default=None, sort_keys=Fals
     return PBJSONEncoder(skipkeys=skipkeys, check_circular=check_circular, default=default, sort_keys=sort_keys, for_json=for_json).encode(obj)
 
 
-_default_decoder = PBJSONDecoder(encoding=None, object_hook=None,
-                                 object_pairs_hook=None)
+_default_decoder = PBJSONDecoder()
 
 
-def load(fp, encoding=None, cls=None, object_hook=None, parse_float=None,
-         parse_int=None, parse_constant=None, object_pairs_hook=None,
-         use_decimal=False, namedtuple_as_object=True, tuple_as_array=True,
-         **kw):
+def load(fp, document_class=None, float_class=None):
     """Deserialize ``fp`` (a ``.read()``-supporting file-like object containing
-    a JSON document) to a Python object.
+    a Packed Binary JSON document) to a Python object.
 
-    *encoding* determines the encoding used to interpret any
-    :class:`str` objects decoded by this instance (``'utf-8'`` by
-    default).  It has no effect when decoding :class:`unicode` objects.
+        *document_class* allows you to specify an alternate class for objects.
+        It will be :class:`dict` if not specified. The class must support __setitem__.
 
-    Note that currently only encodings that are a superset of ASCII work,
-    strings of other encodings should be passed in as :class:`unicode`.
+        *float_class* allows you to specify an alternate class for float values
+        (e.g. :class:`decimal.Decimal`). The class will be passed a string
+         representing the float.
+    """
+    return loads(fp.read(), document_class, float_class)
 
-    *object_hook*, if specified, will be called with the result of every
-    JSON object decoded and its return value will be used in place of the
-    given :class:`dict`.  This can be used to provide custom
-    deserializations (e.g. to support JSON-RPC class hinting).
 
-    *object_pairs_hook* is an optional function that will be called with
-    the result of any object literal decode with an ordered list of pairs.
-    The return value of *object_pairs_hook* will be used instead of the
-    :class:`dict`.  This feature can be used to implement custom decoders
-    that rely on the order that the key and value pairs are decoded (for
-    example, :func:`collections.OrderedDict` will remember the order of
-    insertion). If *object_hook* is also defined, the *object_pairs_hook*
-    takes priority.
+def loads(s, document_class=None, float_class=None):
+    """Deserialize ``s`` (a binary string containing a Packed
+       Binary JSON document) to a Python object.
 
-    *parse_float*, if specified, will be called with the string of every
-    JSON float to be decoded.  By default, this is equivalent to
-    ``float(num_str)``. This can be used to use another datatype or parser
-    for JSON floats (e.g. :class:`decimal.Decimal`).
+        *document_class* allows you to specify an alternate class for objects.
+        It will be :class:`dict` if not specified. The class must support __setitem__.
 
-    *parse_int*, if specified, will be called with the string of every
-    JSON int to be decoded.  By default, this is equivalent to
-    ``int(num_str)``.  This can be used to use another datatype or parser
-    for JSON integers (e.g. :class:`float`).
-
-    *parse_constant*, if specified, will be called with one of the
-    following strings: ``'-Infinity'``, ``'Infinity'``, ``'NaN'``.  This
-    can be used to raise an exception if invalid JSON numbers are
-    encountered.
-
-    If *use_decimal* is true (default: ``False``) then it implies
-    parse_float=decimal.Decimal for parity with ``dump``.
-
-    To use a custom ``JSONDecoder`` subclass, specify it with the ``cls``
-    kwarg. NOTE: You should use *object_hook* or *object_pairs_hook* instead
-    of subclassing whenever possible.
+        *float_class* allows you to specify an alternate class for float values
+        (e.g. :class:`decimal.Decimal`). The class will be passed a string
+         representing the float.
 
     """
-    return loads(fp.read(),
-                 encoding=encoding, cls=cls, object_hook=object_hook,
-                 parse_float=parse_float, parse_int=parse_int,
-                 parse_constant=parse_constant, object_pairs_hook=object_pairs_hook,
-                 use_decimal=use_decimal, **kw)
-
-
-def loads(s, encoding=None, cls=None, object_hook=None, parse_float=None,
-          parse_int=None, parse_constant=None, object_pairs_hook=None,
-          use_decimal=False, **kw):
-    """Deserialize ``s`` (a ``str`` or ``unicode`` instance containing a JSON
-    document) to a Python object.
-
-    *encoding* determines the encoding used to interpret any
-    :class:`str` objects decoded by this instance (``'utf-8'`` by
-    default).  It has no effect when decoding :class:`unicode` objects.
-
-    Note that currently only encodings that are a superset of ASCII work,
-    strings of other encodings should be passed in as :class:`unicode`.
-
-    *object_hook*, if specified, will be called with the result of every
-    JSON object decoded and its return value will be used in place of the
-    given :class:`dict`.  This can be used to provide custom
-    deserializations (e.g. to support JSON-RPC class hinting).
-
-    *object_pairs_hook* is an optional function that will be called with
-    the result of any object literal decode with an ordered list of pairs.
-    The return value of *object_pairs_hook* will be used instead of the
-    :class:`dict`.  This feature can be used to implement custom decoders
-    that rely on the order that the key and value pairs are decoded (for
-    example, :func:`collections.OrderedDict` will remember the order of
-    insertion). If *object_hook* is also defined, the *object_pairs_hook*
-    takes priority.
-
-    *parse_float*, if specified, will be called with the string of every
-    JSON float to be decoded.  By default, this is equivalent to
-    ``float(num_str)``. This can be used to use another datatype or parser
-    for JSON floats (e.g. :class:`decimal.Decimal`).
-
-    *parse_int*, if specified, will be called with the string of every
-    JSON int to be decoded.  By default, this is equivalent to
-    ``int(num_str)``.  This can be used to use another datatype or parser
-    for JSON integers (e.g. :class:`float`).
-
-    *parse_constant*, if specified, will be called with one of the
-    following strings: ``'-Infinity'``, ``'Infinity'``, ``'NaN'``.  This
-    can be used to raise an exception if invalid JSON numbers are
-    encountered.
-
-    If *use_decimal* is true (default: ``False``) then it implies
-    parse_float=decimal.Decimal for parity with ``dump``.
-
-    To use a custom ``JSONDecoder`` subclass, specify it with the ``cls``
-    kwarg. NOTE: You should use *object_hook* or *object_pairs_hook* instead
-    of subclassing whenever possible.
-
-    """
-    if (cls is None and encoding is None and object_hook is None and
-            parse_int is None and parse_float is None and
-            parse_constant is None and object_pairs_hook is None
-            and not use_decimal and not kw):
+    if float_class is None and document_class is None:
         return _default_decoder.decode(s)
-    if cls is None:
-        cls = PBJSONDecoder
-    if object_hook is not None:
-        kw['object_hook'] = object_hook
-    if object_pairs_hook is not None:
-        kw['object_pairs_hook'] = object_pairs_hook
-    if parse_float is not None:
-        kw['parse_float'] = parse_float
-    if parse_int is not None:
-        kw['parse_int'] = parse_int
-    if parse_constant is not None:
-        kw['parse_constant'] = parse_constant
-    if use_decimal:
-        if parse_float is not None:
-            raise TypeError("use_decimal=True implies parse_float=Decimal")
-        kw['parse_float'] = Decimal
-    return cls(encoding=encoding, **kw).decode(s)
+    return PBJSONDecoder(document_class, float_class).decode(s)
 
 
 def _toggle_speedups(enabled):
     from . import decoder as dec
     from . import encoder as enc
-    from . import scanner as scan
     c_make_encoder = _import_c_make_encoder()
     if enabled:
-        dec.scanstring = dec.c_scanstring or dec.py_scanstring
         enc.c_make_encoder = c_make_encoder
-        scan.make_scanner = scan.c_make_scanner or scan.py_make_scanner
     else:
-        dec.scanstring = dec.py_scanstring
         enc.c_make_encoder = None
-        scan.make_scanner = scan.py_make_scanner
-    dec.make_scanner = scan.make_scanner
     global _default_decoder
-    _default_decoder = PBJSONDecoder(
-        encoding=None,
-        object_hook=None,
-        object_pairs_hook=None,
-    )
+    _default_decoder = PBJSONDecoder()
     global _default_encoder
-    _default_encoder = PBJSONEncoder(
-        skipkeys=False,
-        check_circular=True,
-        default=None,
-    )
+    _default_encoder = PBJSONEncoder()
 
 
 def simple_first(kv):
-    """Helper function to pass to item_sort_key to sort simple
+    """Helper function to pass to sort_keys to sort simple
     elements to the top, then container elements.
     """
     return isinstance(kv[1], (list, dict, tuple)), kv[0]
