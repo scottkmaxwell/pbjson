@@ -10,7 +10,6 @@ from time import time
 from json import dumps as json
 from marshal import dumps as marshal
 from pickle import dumps as pickle
-from pbjson.decoder import NaN, PosInf, NegInf
 from decimal import Decimal
 
 
@@ -138,13 +137,13 @@ class TestBinaryEncoder(unittest.TestCase):
             self.assertEqual(b'\xc3\x20\x21\x01\x21\x02', self.encoder.encode(range(3)))
 
     def test_infinity(self):
-        self.assertEqual(b'\x03', self.encoder.encode(PosInf))
+        self.assertEqual(b'\x03', self.encoder.encode(float('inf')))
 
     def test_negative_infinity(self):
-        self.assertEqual(b'\x04', self.encoder.encode(NegInf))
+        self.assertEqual(b'\x04', self.encoder.encode(float('-inf')))
 
     def test_nan(self):
-        self.assertEqual(b'\x05', self.encoder.encode(NaN))
+        self.assertEqual(b'\x05', self.encoder.encode(float('nan')))
 
     def test_simple_dict(self):
         encoded = self.encoder.encode(
