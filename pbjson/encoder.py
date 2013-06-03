@@ -9,6 +9,7 @@ from operator import itemgetter
 from decimal import Decimal
 from struct import pack
 from .compat import text_type, binary_type, string_types, integer_types, PY3
+from .tokens import *
 
 
 def _import_speedups():
@@ -21,27 +22,6 @@ def _import_speedups():
 
 
 c_make_encoder = _import_speedups()
-
-FALSE = b'\x00'
-TRUE = b'\x01'
-NULL = b'\x02'
-INF = b'\x03'
-NEGINF = b'\x04'
-NAN = b'\x05'
-TERMINATED_LIST = b'\x0c'
-TERMINATOR = b'\x0f'
-INT = 0x20
-NEGINT = 0x40
-FLOAT = 0x60
-STRING = 0x80
-BINARY = 0xA0
-LIST = 0xC0
-DICT = 0xE0
-
-FltEnc_Plus = 0xa
-FltEnc_Minus = 0xb
-FltEnc_Decimal = 0xd
-FltEnc_E = 0xe
 
 
 def encode_type_and_length(data_type, length):
@@ -191,24 +171,6 @@ class PBJSONEncoder(object):
         """
         return self.encoder(o)
 
-float_decode = {
-    '0': 0,
-    '1': 1,
-    '2': 2,
-    '3': 3,
-    '4': 4,
-    '5': 5,
-    '6': 6,
-    '7': 7,
-    '8': 8,
-    '9': 9,
-    '+': FltEnc_Plus,
-    '-': FltEnc_Minus,
-    '.': FltEnc_Decimal,
-    'e': FltEnc_E,
-    'E': FltEnc_E
-}
-
 
 # noinspection PyShadowingBuiltins
 def _make_iterencode(check_circular, _default,
@@ -294,11 +256,11 @@ def _make_iterencode(check_circular, _default,
                 token = BINARY
             yield encode_type_and_content(token, o)
         elif o is None:
-            yield b'\02'
+            yield Enc_NULL
         elif o is True:
-            yield b'\01'
+            yield Enc_TRUE
         elif o is False:
-            yield b'\00'
+            yield Enc_FALSE
         elif isinstance(o, integer_types):
             if o:
                 if o < 0:
@@ -337,22 +299,22 @@ def _make_iterencode(check_circular, _default,
             encoded = []
             nibble = None
             if s[0] == 'n' or s[0] == 'N':
-                yield NAN
+                yield Enc_NAN
             elif s[0] == 'i' or s[0] == 'I':
-                yield INF
+                yield Enc_INF
             else:
                 if s[0] == '-':
                     nibble = FltEnc_Minus << 4
                     s = s[1:]
                     if s[0] == 'i' or s[0] == 'I':
-                        yield NEGINF
+                        yield Enc_NEGINF
                         return
                 if s[0] == '0':
                     s = s[1:]
                 if s.endswith('.0'):
                     s = s[:-2]
                 while s:
-                    c, s = float_decode[s[0]], s[1:]
+                    c, s = float_encode[s[0]], s[1:]
                     if nibble is None:
                         nibble = c << 4
                     else:
@@ -386,17 +348,17 @@ def _make_iterencode(check_circular, _default,
                     else:
                         try:
                             len(o)
-                        except Exception as e:
+                        except Exception:
                             pass
                         else:
                             for chunk in _iterencode_list(o):
                                 yield chunk
                             return
-                        yield TERMINATED_LIST
+                        yield Enc_TERMINATED_LIST
                         for item in o:
                             for chunk in _iterencode(item):
                                 yield chunk
-                        yield TERMINATOR
+                        yield Enc_TERMINATOR
                         return
                     if check_circular:
                         markerid = id(o)
