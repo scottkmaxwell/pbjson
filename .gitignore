@@ -5,6 +5,7 @@
 .DS_Store
 /MANIFEST
 /.coverage
+/.idea
 /coverage.xml
 /htmlcov
 /build
