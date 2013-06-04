@@ -9,6 +9,10 @@ import struct
 from .tokens import *
 
 
+class PBJSONDecodeError(ValueError):
+    pass
+
+
 def _import_speedups():
     try:
         # noinspection PyUnresolvedReferences
