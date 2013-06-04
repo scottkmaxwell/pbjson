@@ -102,7 +102,7 @@ typedef struct _PyDecoder {
     PyObject *document_class;
     PyObject *float_class;
     PyObject *keys;
-    const char* data;
+    const unsigned char* data;
     int len;
 } PyDecoder;
 
@@ -403,7 +403,7 @@ decode_special_float(PyDecoder *decoder, unsigned char token)
 static PyObject *
 decode_string(PyDecoder *decoder, int length)
 {
-    PyObject *result = PyUnicode_FromStringAndSize(decoder->data, length);
+    PyObject *result = PyUnicode_FromStringAndSize((const char *)decoder->data, length);
     decoder->data += length;
     decoder->len -= length;
     return result;
@@ -412,7 +412,7 @@ decode_string(PyDecoder *decoder, int length)
 static PyObject *
 decode_binary(PyDecoder *decoder, int length)
 {
-    PyObject *result = PyBytes_FromStringAndSize(decoder->data, length);
+    PyObject *result = PyBytes_FromStringAndSize((const char *)decoder->data, length);
     decoder->data += length;
     decoder->len -= length;
     return result;
@@ -497,7 +497,7 @@ decode_dict(PyDecoder *decoder, int length)
                     set_overflow();
                     break;
                 }
-                key = PyUnicode_FromStringAndSize(decoder->data, token);
+                key = PyUnicode_FromStringAndSize((const char *)decoder->data, token);
                 if (!key) {
                     Py_CLEAR(result);
                     break;
@@ -922,6 +922,9 @@ encode_long(JSON_Accu *rval, PyObject *obj)
     return ret;
 }
 
+#define USE_FAST_DTOA
+
+#ifdef USE_FAST_DTOA
 static const double pow10[] = {1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000};
 
 static void strreverse(char* begin, char* end)
@@ -931,7 +934,9 @@ static void strreverse(char* begin, char* end)
         aux = *end, *end-- = *begin, *begin++ = aux;
     }
 }
+#endif
 
+#define FLOAT_BUFFER 0x80
 unsigned char dtoa(double value, char* str)
 {
     static const int prec = 9;
@@ -939,6 +944,11 @@ unsigned char dtoa(double value, char* str)
         fix_special_floats();
     }
 
+    if (!value) {
+        str[0]='0';
+        str[1]=0;
+        return Enc_FLOAT;
+    }
     if (value == inf_value) {
         return Enc_INF;
     }
@@ -948,14 +958,11 @@ unsigned char dtoa(double value, char* str)
     if (value == nan_value || !(value == value)) {
         return Enc_NAN;
     }
-    
+
+#ifdef USE_FAST_DTOA
     /* if input is larger than thres_max, revert to exponential */
     const double thres_max = (double)(0x7FFFFFFF);
-    
-    int count;
-    double diff = 0.0;
-    char* wstr = str;
-    
+
     /* we'll work in positive values and deal with the
      negative sign issue later */
     int neg = 0;
@@ -963,7 +970,28 @@ unsigned char dtoa(double value, char* str)
         neg = 1;
         value = -value;
     }
+
+    /* for very large numbers switch back to native sprintf for exponentials.
+     anyone want to write code to replace this? */
+    /*
+     normal printf behavior is to print EVERY whole number digit
+     which can be 100s of characters overflowing your buffers == bad
+     */
+    if (value > thres_max || value < .00001) {
+#if PY_VERSION_HEX < 0x02070000
+        PyOS_snprintf(str, FLOAT_BUFFER, "%e", value);
+#else
+        char *m = PyOS_double_to_string(value, 'r', 0, 0, 0);
+        strcpy(str, m);
+        PyMem_Free(m);
+#endif
+//        sprintf(str, "%e", neg ? -value : value);
+        return Enc_FLOAT;
+    }
     
+    int count;
+    double diff = 0.0;
+    char* wstr = str;
     
     int whole = (int) value;
     double tmp = (value - whole) * pow10[prec];
@@ -981,26 +1009,6 @@ unsigned char dtoa(double value, char* str)
         /* if halfway, round up if odd, OR
          if last digit is 0.  That last part is strange */
         ++frac;
-    }
-    
-    /* for very large numbers switch back to native sprintf for exponentials.
-     anyone want to write code to replace this? */
-    /*
-     normal printf behavior is to print EVERY whole number digit
-     which can be 100s of characters overflowing your buffers == bad
-     */
-    if (value > thres_max) {
-        sprintf(str, "%e", neg ? -value : value);
-        if (str[0] == 'n') {
-            return Enc_NAN;
-        }
-        if (str[0] == 'i') {
-            return Enc_INF;
-        }
-        if (str[0] == '-' && str[1] == 'i') {
-            return Enc_NEGINF;
-        }
-        return Enc_FLOAT;
     }
     
     if (prec == 0) {
@@ -1046,6 +1054,16 @@ unsigned char dtoa(double value, char* str)
     }
     *wstr='\0';
     strreverse(str, wstr-1);
+#else
+#if PY_VERSION_HEX < 0x02070000
+    PyOS_snprintf(str, FLOAT_BUFFER, "%e", value);
+#else
+    char *m = PyOS_double_to_string(value, 'r', 0, 0, 0);
+    strcpy(str, m);
+    PyMem_Free(m);
+#endif
+#endif
+
     return Enc_FLOAT;
 }
 
@@ -1111,7 +1129,7 @@ encode_float_from_charstring(JSON_Accu *rval, const char* str, int len, unsigned
 static int
 encode_float(JSON_Accu *rval, PyObject *obj)
 {
-    char buffer[0x80];
+    char buffer[FLOAT_BUFFER];
     double d = PyFloat_AS_DOUBLE(obj);
     unsigned char token = dtoa(d, buffer);
     return encode_float_from_charstring(rval, buffer, strlen(buffer), token);
@@ -1264,15 +1282,6 @@ encode_one(PyEncoderObject *s, JSON_Accu *rval, PyObject *obj)
         else if (PyFloat_Check(obj)) {
             rv = encode_float(rval, obj);
         }
-        else if (PyObject_TypeCheck(obj, (PyTypeObject *)s->Decimal)) {
-            rv = encode_decimal(rval, obj);
-        }
-        else if (PyDict_Check(obj)) {
-            if (Py_EnterRecursiveCall(" while encoding a JSON object"))
-                return rv;
-            rv = encode_dict(s, rval, obj);
-            Py_LeaveRecursiveCall();
-        }
         else if (s->for_json && _has_for_json_hook(obj)) {
             PyObject *newobj;
             if (Py_EnterRecursiveCall(" while encoding a JSON object"))
@@ -1282,6 +1291,15 @@ encode_one(PyEncoderObject *s, JSON_Accu *rval, PyObject *obj)
                 rv = encode_one(s, rval, newobj);
                 Py_DECREF(newobj);
             }
+            Py_LeaveRecursiveCall();
+        }
+        else if (PyObject_TypeCheck(obj, (PyTypeObject *)s->Decimal)) {
+            rv = encode_decimal(rval, obj);
+        }
+        else if (PyDict_Check(obj)) {
+            if (Py_EnterRecursiveCall(" while encoding a JSON object"))
+                return rv;
+            rv = encode_dict(s, rval, obj);
             Py_LeaveRecursiveCall();
         }
         else if (_is_namedtuple(obj)) {
@@ -1400,8 +1418,8 @@ encode_dict(PyEncoderObject *s, JSON_Accu *rval, PyObject *dct)
                 goto bail;
             Py_CLEAR(ident);
         }
-        return 0;
     }
+    return 0;
 
 bail:
     Py_XDECREF(encoded);

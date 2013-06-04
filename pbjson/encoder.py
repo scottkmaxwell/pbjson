@@ -127,7 +127,6 @@ class PBJSONEncoder(object):
                 self.sort_keys,
                 self.skipkeys, self.for_json,
                 Decimal=Decimal)
-        self.c_encoder = None
 
     def default(self, o):
         """Implement this method in a subclass such that it returns
