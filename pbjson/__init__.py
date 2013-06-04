@@ -88,7 +88,7 @@ __all__ = [
 
 __author__ = 'Scott Maxwell <scott@codecobblers.com>'
 
-from .decoder import PBJSONDecoder
+from .decoder import decode
 from .encoder import PBJSONEncoder
 
 
@@ -167,9 +167,6 @@ def dumps(obj, skipkeys=False, check_circular=True, default=None, sort_keys=Fals
     return PBJSONEncoder(skipkeys=skipkeys, check_circular=check_circular, default=default, sort_keys=sort_keys, for_json=for_json).encode(obj)
 
 
-_default_decoder = PBJSONDecoder()
-
-
 def load(fp, document_class=None, float_class=None):
     """Deserialize ``fp`` (a ``.read()``-supporting file-like object containing
     a Packed Binary JSON document) to a Python object.
@@ -181,7 +178,7 @@ def load(fp, document_class=None, float_class=None):
         (e.g. :class:`decimal.Decimal`). The class will be passed a string
          representing the float.
     """
-    return loads(fp.read(), document_class, float_class)
+    return decode(fp.read(), document_class, float_class)
 
 
 def loads(s, document_class=None, float_class=None):
@@ -196,9 +193,7 @@ def loads(s, document_class=None, float_class=None):
          representing the float.
 
     """
-    if float_class is None and document_class is None:
-        return _default_decoder.decode(s)
-    return PBJSONDecoder(document_class, float_class).decode(s)
+    return decode(s, document_class, float_class)
 
 
 def _toggle_speedups(enabled):
@@ -209,8 +204,6 @@ def _toggle_speedups(enabled):
         enc.c_make_encoder = c_make_encoder
     else:
         enc.c_make_encoder = None
-    global _default_decoder
-    _default_decoder = PBJSONDecoder()
     global _default_encoder
     _default_encoder = PBJSONEncoder()
 

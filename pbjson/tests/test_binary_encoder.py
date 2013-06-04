@@ -16,7 +16,6 @@ from decimal import Decimal
 class TestBinaryEncoder(unittest.TestCase):
 
     def setUp(self):
-        self.decoder = pbjson.PBJSONDecoder()
         self.encoder = PBJSONEncoder(sort_keys=True)
 
     def test_encode_false(self):
