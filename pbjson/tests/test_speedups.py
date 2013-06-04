@@ -1,6 +1,6 @@
 from unittest import TestCase
 
-from pbjson import encoder, scanner
+from pbjson import encoder, decoder
 
 
 def has_speedups():
@@ -11,7 +11,7 @@ class TestDecode(TestCase):
     def test_make_scanner(self):
         if not has_speedups():
             return
-        self.assertRaises(AttributeError, scanner.c_make_scanner, 1)
+        self.assertRaises(AttributeError, decoder.c_decoder, 1)
 
     def test_make_encoder(self):
         if not has_speedups():

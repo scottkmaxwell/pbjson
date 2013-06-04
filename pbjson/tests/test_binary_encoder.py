@@ -33,6 +33,16 @@ class TestBinaryEncoder(unittest.TestCase):
     def test_encode_medium_length_string(self):
         self.assertEqual(b'\x90\x20Now is the time for all good men', self.encoder.encode('Now is the time for all good men'))
 
+    def test_int_roundtrip(self):
+        encoded = pbjson.dumps(1234567890)
+        decoded = pbjson.loads(encoded)
+        self.assertEqual(1234567890, decoded)
+
+    def test_e_roundtrip(self):
+        encoded = pbjson.dumps(0.123456789e-12)
+        decoded = pbjson.loads(encoded)
+        self.assertEqual(0.123456789e-12, decoded)
+
     def test_encode_long_string(self):
         contents = 'a' * 2100
         encoded = self.encoder.encode(contents)
