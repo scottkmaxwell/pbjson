@@ -924,22 +924,9 @@ encode_long(JSON_Accu *rval, PyObject *obj)
 
 #define USE_FAST_DTOA
 
-#ifdef USE_FAST_DTOA
-static const double pow10[] = {1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000};
-
-static void strreverse(char* begin, char* end)
-{
-    char aux;
-    while (end > begin) {
-        aux = *end, *end-- = *begin, *begin++ = aux;
-    }
-}
-#endif
-
-#define FLOAT_BUFFER 0x80
+#define FLOAT_BUFFER 0x20
 unsigned char dtoa(double value, char* str)
 {
-    static const int prec = 9;
     if (!endian) {
         fix_special_floats();
     }
@@ -960,8 +947,11 @@ unsigned char dtoa(double value, char* str)
     }
 
 #ifdef USE_FAST_DTOA
+    static const double pow10[] = {1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000, 10000000000, 100000000000, 1000000000000, 10000000000000, 100000000000000, 1000000000000000, 10000000000000000};
+    char buffer[FLOAT_BUFFER];
     /* if input is larger than thres_max, revert to exponential */
     const double thres_max = (double)(0x7FFFFFFF);
+    int prec = 15;
 
     /* we'll work in positive values and deal with the
      negative sign issue later */
@@ -977,7 +967,10 @@ unsigned char dtoa(double value, char* str)
      normal printf behavior is to print EVERY whole number digit
      which can be 100s of characters overflowing your buffers == bad
      */
-    if (value > thres_max || value < .00001) {
+    if (value > thres_max || value < .0000001) {
+        if (neg) {
+            value = -value;
+        }
 #if PY_VERSION_HEX < 0x02070000
         PyOS_snprintf(str, FLOAT_BUFFER, "%e", value);
 #else
@@ -985,17 +978,22 @@ unsigned char dtoa(double value, char* str)
         strcpy(str, m);
         PyMem_Free(m);
 #endif
-//        sprintf(str, "%e", neg ? -value : value);
+//        sprintf(str, "%e", value);
         return Enc_FLOAT;
     }
     
     int count;
     double diff = 0.0;
-    char* wstr = str;
+    char* wstr = buffer;
     
-    int whole = (int) value;
+    uint64_t whole = value;
+    uint64_t frac = whole;
+    while (frac>9) {
+        frac /= 10;
+        --prec;
+    }
     double tmp = (value - whole) * pow10[prec];
-    uint32_t frac = (uint32_t)(tmp);
+    frac = (uint64_t)(tmp);
     diff = tmp - frac;
     
     if (diff > 0.5) {
@@ -1052,8 +1050,10 @@ unsigned char dtoa(double value, char* str)
     if (neg) {
         *wstr++ = '-';
     }
-    *wstr='\0';
-    strreverse(str, wstr-1);
+    while (--wstr >= buffer) {
+        *str++ = *wstr;
+    }
+    *str = 0;
 #else
 #if PY_VERSION_HEX < 0x02070000
     PyOS_snprintf(str, FLOAT_BUFFER, "%e", value);
