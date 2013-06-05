@@ -1,4 +1,4 @@
-from unittest import TestCase
+from unittest import TestCase, main
 import pbjson as json
 
 # from http://json.org/JSON_checker/test/pass2.json
@@ -11,3 +11,6 @@ class TestPass2(TestCase):
         encoded = json.dumps(JSON)
         decoded = json.loads(encoded)
         self.assertEqual(JSON, decoded)
+
+if __name__ == '__main__':
+    main()

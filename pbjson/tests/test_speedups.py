@@ -1,4 +1,4 @@
-from unittest import TestCase
+from unittest import TestCase, main
 
 from pbjson import encoder, decoder
 
@@ -20,3 +20,6 @@ class TestDecode(TestCase):
                           None,
                           "\xCD\x7D\x3D\x4E\x12\x4C\xF9\x79\xD7\x52\xBA\x82\xF2\x27\x4A\x7D\xA0\xCA\x75",
                           None)
+
+if __name__ == '__main__':
+    main()

@@ -1,6 +1,6 @@
 __author__ = 'Scott Maxwell'
 
-import unittest
+from unittest import TestCase, main
 
 import pbjson
 from pbjson.compat import PY3
@@ -13,7 +13,7 @@ import pickle
 from decimal import Decimal
 
 
-class TestBinaryEncoder(unittest.TestCase):
+class TestBinaryEncoder(TestCase):
 
     def setUp(self):
         self.encoder = PBJSONEncoder(sort_keys=True)
@@ -210,7 +210,7 @@ class TestBinaryEncoder(unittest.TestCase):
         )
         self.assertEqual(b'\xe2\x09countries\xc3\xe2\x04code\x82us\x04name\x8DUnited States\xe2\x81\x82ca\x82\x86Canada\xe2\x81\x82mx\x82\x86Mexico\x06region\x21\x03', encoded)
 
-    if c_make_encoder or 1:
+    if c_make_encoder:
         def test_speed(self):
             sample = {
                 "countries": [
@@ -279,7 +279,7 @@ class TestBinaryEncoder(unittest.TestCase):
             start = time()
             for i in range(iterations):
                 binary_json_size = len(pbjson.dumps(sample))
-                self.assertEqual(size, binary_json_size)
+                # self.assertEqual(size, binary_json_size)
             binary_json_time = time() - start
 
             start = time()
@@ -320,6 +320,6 @@ def cycle():
         j.encode(sample)
 
 if __name__ == '__main__':
-    unittest.main()
+    main()
     # import cProfile
     # cProfile.run('cycle()')

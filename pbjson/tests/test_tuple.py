@@ -1,10 +1,10 @@
-import unittest
+from unittest import TestCase, main
 
 from pbjson.compat import BytesIO
 import pbjson as json
 
 
-class TestTuples(unittest.TestCase):
+class TestTuples(TestCase):
     def test_tuple_array_dumps(self):
         t = (1, 2, 3)
         expect = json.dumps(list(t))
@@ -24,3 +24,6 @@ class TestTuples(unittest.TestCase):
         sio = BytesIO()
         json.dump(t, sio, default=repr)
         self.assertEqual(expect, sio.getvalue())
+
+if __name__ == '__main__':
+    main()

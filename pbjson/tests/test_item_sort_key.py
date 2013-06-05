@@ -1,4 +1,4 @@
-from unittest import TestCase
+from unittest import TestCase, main
 
 import pbjson as json
 from operator import itemgetter
@@ -19,3 +19,6 @@ class TestItemSortKey(TestCase):
         self.assertEqual(
             b'\xe8\x01a!\x01\x05Array\xc4!\x01!\x05!\x06!\t\x01c!\x05\x05crate\x83dog\x04Jack\x84jill\x04pick\x83axe\x05tuple\xc3!S!\x0c!\x03\x04zeak\x82oh',
             json.dumps(a, sort_keys=lambda kv: kv[0].lower()))
+
+if __name__ == '__main__':
+    main()

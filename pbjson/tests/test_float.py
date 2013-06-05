@@ -1,5 +1,5 @@
 import math
-from unittest import TestCase
+from unittest import TestCase, main
 from pbjson.compat import long_type, text_type
 import pbjson as json
 
@@ -20,3 +20,6 @@ class TestFloat(TestCase):
     def test_ints(self):
         for num in [1, long_type(1), 1<<32, 1<<64]:
             self.assertEqual(json.loads(json.dumps(num)), num)
+
+if __name__ == '__main__':
+    main()

@@ -1,4 +1,4 @@
-import unittest
+from unittest import TestCase, main
 import pbjson as json
 
 
@@ -27,7 +27,7 @@ class ListForJson(list):
         return ['list']
 
 
-class TestForJson(unittest.TestCase):
+class TestForJson(TestCase):
     def assertRoundTrip(self, obj, other, for_json=True):
         if for_json is None:
             # None will use the default
@@ -95,3 +95,6 @@ class TestForJson(unittest.TestCase):
     def test_raises_typeerror_if_for_json_not_true_with_object(self):
         self.assertRaises(TypeError, json.dumps, ForJson())
         self.assertRaises(TypeError, json.dumps, ForJson(), for_json=False)
+
+if __name__ == '__main__':
+    main()

@@ -1,4 +1,4 @@
-from unittest import TestCase
+from unittest import TestCase, main
 import pbjson as json
 
 
@@ -21,3 +21,6 @@ class TestCheckCircular(TestCase):
         dct2 = {'a': []}
         dct2['a'].append(dct2)
         self.assertRaises(ValueError, json.dumps, dct2)
+
+if __name__ == '__main__':
+    main()

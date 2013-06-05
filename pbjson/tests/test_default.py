@@ -1,4 +1,4 @@
-from unittest import TestCase
+from unittest import TestCase, main
 
 import pbjson as json
 
@@ -8,3 +8,6 @@ class TestDefault(TestCase):
         self.assertEqual(
             json.dumps(type, default=repr),
             json.dumps(repr(type)))
+
+if __name__ == '__main__':
+    main()
