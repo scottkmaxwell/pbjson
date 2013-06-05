@@ -7,9 +7,9 @@ from pbjson.compat import PY3
 from pbjson.encoder import PBJSONEncoder, c_make_encoder
 from struct import unpack_from
 from time import time
-from json import dumps as json
-from marshal import dumps as marshal
-from pickle import dumps as pickle
+import json
+import marshal
+import pickle
 from decimal import Decimal
 
 
@@ -210,7 +210,7 @@ class TestBinaryEncoder(unittest.TestCase):
         )
         self.assertEqual(b'\xe2\x09countries\xc3\xe2\x04code\x82us\x04name\x8DUnited States\xe2\x81\x82ca\x82\x86Canada\xe2\x81\x82mx\x82\x86Mexico\x06region\x21\x03', encoded)
 
-    if c_make_encoder:
+    if c_make_encoder or 1:
         def test_speed(self):
             sample = {
                 "countries": [
@@ -272,23 +272,24 @@ class TestBinaryEncoder(unittest.TestCase):
 
             start = time()
             for i in range(iterations):
-                json_size = len(json(sample))
+                json_size = len(json.dumps(sample))
             json_time = time() - start
 
+            size = len(pbjson.dumps(sample))
             start = time()
-            j = PBJSONEncoder(check_circular=False)
             for i in range(iterations):
-                binary_json_size = len(j.encode(sample))
+                binary_json_size = len(pbjson.dumps(sample))
+                self.assertEqual(size, binary_json_size)
             binary_json_time = time() - start
 
             start = time()
             for i in range(iterations):
-                marshal_size = len(marshal(sample))
+                marshal_size = len(marshal.dumps(sample))
             marshal_time = time() - start
 
             start = time()
             for i in range(iterations):
-                pickle_size = len(pickle(sample))
+                pickle_size = len(pickle.dumps(sample))
             pickle_time = time() - start
 
             # noinspection PyUnboundLocalVariable
