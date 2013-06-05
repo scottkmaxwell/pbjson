@@ -371,4 +371,10 @@ def _make_iterencode(check_circular, _default,
                         # noinspection PyUnboundLocalVariable
                         del markers[markerid]
 
-    return _iterencode
+    def _start_encode(o):
+        key_cache.clear()
+        if markers:
+            markers.clear()
+        return _iterencode(o)
+
+    return _start_encode
