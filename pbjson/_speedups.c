@@ -978,7 +978,6 @@ unsigned char dtoa(double value, char* str)
         strcpy(str, m);
         PyMem_Free(m);
 #endif
-//        sprintf(str, "%e", value);
         return Enc_FLOAT;
     }
     
