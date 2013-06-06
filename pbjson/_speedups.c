@@ -1,6 +1,7 @@
 /* -*- mode: C; c-file-style: "python"; c-basic-offset: 4 -*- */
 #include "Python.h"
 #include "structmember.h"
+#include <math.h>
 
 #if PY_MAJOR_VERSION >= 3
 #define PyString_Check PyBytes_Check
@@ -925,33 +926,26 @@ encode_long(JSON_Accu *rval, PyObject *obj)
 #define USE_FAST_DTOA
 
 #define FLOAT_BUFFER 0x20
-unsigned char dtoa(double value, char* str)
+unsigned char dtoa(double value, char str[FLOAT_BUFFER])
 {
-    if (!endian) {
-        fix_special_floats();
-    }
-
     if (!value) {
         str[0]='0';
         str[1]=0;
         return Enc_FLOAT;
     }
-    if (value == inf_value) {
-        return Enc_INF;
-    }
-    if (value == neginf_value) {
-        return Enc_NEGINF;
-    }
-    if (value == nan_value || !(value == value)) {
-        return Enc_NAN;
+    if (value - value != 0.0)
+    {
+        if (value != value)
+            return Enc_NAN;
+        else
+            return value<0 ? Enc_NEGINF : Enc_INF;
     }
 
 #ifdef USE_FAST_DTOA
-    static const double pow10[] = {1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000, 10000000000, 100000000000, 1000000000000, 10000000000000, 100000000000000, 1000000000000000, 10000000000000000};
     char buffer[FLOAT_BUFFER];
     /* if input is larger than thres_max, revert to exponential */
     const double thres_max = (double)(0x7FFFFFFF);
-    int prec = 15;
+    int prec = 16;
 
     /* we'll work in positive values and deal with the
      negative sign issue later */
@@ -967,13 +961,14 @@ unsigned char dtoa(double value, char* str)
      normal printf behavior is to print EVERY whole number digit
      which can be 100s of characters overflowing your buffers == bad
      */
-    if (value > thres_max || value < .0000001) {
+    if (value > thres_max || value < .0001) {
         if (neg) {
             value = -value;
         }
 #if PY_VERSION_HEX < 0x02070000
         PyOS_snprintf(str, FLOAT_BUFFER, "%e", value);
 #else
+        /* returns value using Python's 'repr' format */
         char *m = PyOS_double_to_string(value, 'r', 0, 0, 0);
         strcpy(str, m);
         PyMem_Free(m);
@@ -986,19 +981,54 @@ unsigned char dtoa(double value, char* str)
     char* wstr = buffer;
     
     uint64_t whole = value;
-    uint64_t frac = whole;
-    while (frac>9) {
-        frac /= 10;
-        --prec;
+    uint64_t frac;
+    if (whole) {
+        frac = whole;
+        while (frac>9) {
+            frac /= 10;
+            --prec;
+        }
     }
-    double tmp = (value - whole) * pow10[prec];
+    else if (value < .1) {
+        ++prec;
+        if (value < .01) {
+            ++prec;
+            if (value < .001) {
+                ++prec;
+            }
+        }
+    }
+    double p = pow(10, prec);
+    double tmp = (value - whole) * p;
     frac = (uint64_t)(tmp);
     diff = tmp - frac;
+    uint64_t p_div_10 = p/10;
+
+    /* add one digit of precision back if our frac is not maxed out */
+    if (diff && frac < p_div_10) {
+        frac *= 10;
+        tmp = diff*10;
+        frac += (int)tmp;
+        diff = tmp - (int)tmp;
+        p_div_10 = p;
+        p *= 10;
+        prec += 1;
+    }
     
-    if (diff > 0.5) {
-        ++frac;
+    if (diff > 0.5 && frac != p_div_10) {
+        /* treat edge of precision as one precision lower */
+        if (frac > p_div_10) {
+            int mod = frac%10;
+            if (mod > 5) {
+                frac += (10-mod);
+            } else if (mod && mod < 5) {
+                frac -= mod;
+            }
+        } else {
+            ++frac;
+        }
         /* handle rollover, e.g.  case 0.99 with prec 1 is 1.0  */
-        if (frac >= pow10[prec]) {
+        if (frac >= p) {
             frac = 0;
             ++whole;
         }
@@ -1006,6 +1036,8 @@ unsigned char dtoa(double value, char* str)
         /* if halfway, round up if odd, OR
          if last digit is 0.  That last part is strange */
         ++frac;
+    } else if (!diff && frac > p_div_10 && (frac % 100) == 1) {
+        --frac;
     }
     
     if (prec == 0) {
@@ -1018,8 +1050,6 @@ unsigned char dtoa(double value, char* str)
             /* 1.5 -> 2, but 2.5 -> 2 */
             ++whole;
         }
-        
-        //vvvvvvvvvvvvvvvvvvv  Diff from modp_dto2
     } else if (frac) {
         count = prec;
         // now do fractional part, as an unsigned number
@@ -1029,7 +1059,6 @@ unsigned char dtoa(double value, char* str)
             --count;
             frac /= 10;
         }
-        //^^^^^^^^^^^^^^^^^^^  Diff from modp_dto2
         
         // now do fractional part, as an unsigned number
         do {
@@ -1128,10 +1157,42 @@ encode_float_from_charstring(JSON_Accu *rval, const char* str, int len, unsigned
 static int
 encode_float(JSON_Accu *rval, PyObject *obj)
 {
+#if 1
     char buffer[FLOAT_BUFFER];
     double d = PyFloat_AS_DOUBLE(obj);
     unsigned char token = dtoa(d, buffer);
     return encode_float_from_charstring(rval, buffer, strlen(buffer), token);
+#else
+    PyObject *encoded = PyObject_Str(obj);
+    if (!encoded) {
+        return -1;
+    }
+#if PY_MAJOR_VERSION >= 3
+    obj = encoded;
+    encoded = PyUnicode_AsUTF8String(obj);
+    if (!encoded) {
+        Py_XDECREF(obj);
+        return -1;
+    }
+#endif
+    const char* str = PyString_AS_STRING(encoded);
+    int len = PyString_GET_SIZE(encoded);
+    unsigned char token = Enc_FLOAT;
+    if (len) {
+        if (str[0] == 'i') {
+            token = Enc_INF;
+        }
+        else if (str[0] == 'n') {
+            token = Enc_NAN;
+        }
+        else if (str[0] == '-' && str[1] == 'i') {
+            token = Enc_NEGINF;
+        }
+    }
+    int rv = encode_float_from_charstring(rval, str, len, token);
+    Py_XDECREF(encoded);
+    return rv;
+#endif
 }
 
 static int

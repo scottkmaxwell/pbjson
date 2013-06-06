@@ -320,6 +320,14 @@ def cycle():
         j.encode(sample)
 
 if __name__ == '__main__':
+    # v = 3.100000000001
+    # a = pbjson.dumps(v)
+    # b = pbjson.loads(a)
+    # s = repr(v)
+    # if s[0] == '0':
+    #     s = s[1:]
+    # length = 1 + int((len(s)+1)/2)
+    # print(v, b, v - b if v-b else '', 'Bad length {}, expected {}'.format(len(a), length) if len(a) != length else '')
     main()
     # import cProfile
     # cProfile.run('cycle()')
