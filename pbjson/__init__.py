@@ -88,19 +88,10 @@ __all__ = [
 
 __author__ = 'Scott Maxwell <scott@codecobblers.com>'
 
-from .decoder import decode
-from .encoder import PBJSONEncoder
+from . import decoder
+from . import encoder
 
-
-def _import_c_make_encoder():
-    try:
-        # noinspection PyUnresolvedReferences
-        from . import _speedups
-        return _speedups.make_encoder
-    except ImportError:
-        return None
-
-_default_encoder = PBJSONEncoder()
+_default_encoder = encoder.PBJSONEncoder()
 
 
 def dump(obj, fp, skipkeys=False, check_circular=True, default=None, sort_keys=False, for_json=False):
@@ -131,7 +122,7 @@ def dump(obj, fp, skipkeys=False, check_circular=True, default=None, sort_keys=F
     if not skipkeys and check_circular and default is None and not for_json:
         iterable = _default_encoder.iterencode(obj)
     else:
-        iterable = PBJSONEncoder(skipkeys=skipkeys, check_circular=check_circular, default=default, sort_keys=sort_keys, for_json=for_json).iterencode(obj)
+        iterable = encoder.PBJSONEncoder(skipkeys=skipkeys, check_circular=check_circular, default=default, sort_keys=sort_keys, for_json=for_json).iterencode(obj)
     # could accelerate with writelines in some versions of Python, at
     # a debuggability cost
     for chunk in iterable:
@@ -164,7 +155,7 @@ def dumps(obj, skipkeys=False, check_circular=True, default=None, sort_keys=Fals
     # cached encoder
     if not skipkeys and check_circular and default is None and not sort_keys and not for_json:
         return _default_encoder.encode(obj)
-    return PBJSONEncoder(skipkeys=skipkeys, check_circular=check_circular, default=default, sort_keys=sort_keys, for_json=for_json).encode(obj)
+    return encoder.PBJSONEncoder(skipkeys=skipkeys, check_circular=check_circular, default=default, sort_keys=sort_keys, for_json=for_json).encode(obj)
 
 
 def load(fp, document_class=None, float_class=None):
@@ -178,7 +169,7 @@ def load(fp, document_class=None, float_class=None):
         (e.g. :class:`decimal.Decimal`). The class will be passed a string
          representing the float.
     """
-    return decode(fp.read(), document_class, float_class)
+    return decoder.decode(fp.read(), document_class, float_class)
 
 
 def loads(s, document_class=None, float_class=None):
@@ -193,19 +184,22 @@ def loads(s, document_class=None, float_class=None):
          representing the float.
 
     """
-    return decode(s, document_class, float_class)
+    return decoder.decode(s, document_class, float_class)
+
+
+def _has_speedups():
+    return bool(decoder.decode is decoder.c_decoder or encoder.make_encoder is encoder.c_make_encoder)
 
 
 def _toggle_speedups(enabled):
-    from . import decoder as dec
-    from . import encoder as enc
-    c_make_encoder = _import_c_make_encoder()
     if enabled:
-        enc.c_make_encoder = c_make_encoder
+        encoder.make_encoder = encoder.c_make_encoder or encoder.py_make_encoder
+        decoder.decode = decoder.c_decoder or decoder.py_decoder
     else:
-        enc.c_make_encoder = None
+        encoder.make_encoder = encoder.py_make_encoder
+        decoder.decode = decoder.py_decoder
     global _default_encoder
-    _default_encoder = PBJSONEncoder()
+    _default_encoder = encoder.PBJSONEncoder()
 
 
 def simple_first(kv):

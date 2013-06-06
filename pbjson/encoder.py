@@ -116,17 +116,10 @@ class PBJSONEncoder(object):
         self.for_json = for_json
         if default is not None:
             self.default = default
-        if c_make_encoder is not None:
-            self.encoder = c_make_encoder(
-                check_circular, self.default, self.sort_keys,
-                self.skipkeys, self.for_json,
-                Decimal)
-        else:
-            self.encoder = _make_iterencode(
-                check_circular, self.default,
-                self.sort_keys,
-                self.skipkeys, self.for_json,
-                Decimal=Decimal)
+        self.encoder = make_encoder(
+            check_circular, self.default, self.sort_keys,
+            self.skipkeys, self.for_json,
+            Decimal)
 
     def default(self, o):
         """Implement this method in a subclass such that it returns
@@ -172,20 +165,20 @@ class PBJSONEncoder(object):
 
 
 # noinspection PyShadowingBuiltins
-def _make_iterencode(check_circular, _default,
-                     _sort_keys, _skipkeys, _for_json,
-                     ## HACK: hand-optimized bytecode; turn globals into locals
-                     _PY3=PY3,
-                     ValueError=ValueError,
-                     string_types=string_types,
-                     Decimal=Decimal,
-                     dict=dict,
-                     float=float,
-                     id=id,
-                     integer_types=integer_types,
-                     isinstance=isinstance,
-                     list=list,
-                     str=str):
+def py_make_encoder(check_circular, _default,
+                    _sort_keys, _skipkeys, _for_json,
+                    ## HACK: hand-optimized bytecode; turn globals into locals
+                    Decimal=Decimal,
+                    _PY3=PY3,
+                    ValueError=ValueError,
+                    string_types=string_types,
+                    dict=dict,
+                    float=float,
+                    id=id,
+                    integer_types=integer_types,
+                    isinstance=isinstance,
+                    list=list,
+                    str=str):
     key_cache = {}
     markers = {} if check_circular else None
 
@@ -236,10 +229,14 @@ def _make_iterencode(check_circular, _default,
             if key in key_cache:
                 yield pack('B', 0x80 | key_cache[key])
             else:
+                encoded_key = key.encode()
+                if len(encoded_key) > 127:
+                    # _skipkeys must be True
+                    continue
                 key_count = len(key_cache)
                 if key_count < 128:
                     key_cache[key] = key_count
-                yield pack('B', len(key)) + key.encode()
+                yield pack('B', len(encoded_key)) + encoded_key
             for encoded in _iterencode(value):
                 yield encoded
         if check_circular:
@@ -378,3 +375,5 @@ def _make_iterencode(check_circular, _default,
         return _iterencode(o)
 
     return _start_encode
+
+make_encoder = c_make_encoder or py_make_encoder

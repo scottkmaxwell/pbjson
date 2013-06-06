@@ -4,16 +4,17 @@ from unittest import TestCase, main
 
 import pbjson
 from pbjson.compat import PY3
-from pbjson.encoder import PBJSONEncoder, c_make_encoder
+from pbjson.encoder import PBJSONEncoder
 from struct import unpack_from
 from time import time
 import json
 import marshal
 import pickle
 from decimal import Decimal
+from pbjson.tests.test_decode import sample
 
 
-class TestBinaryEncoder(TestCase):
+class TestEncode(TestCase):
 
     def setUp(self):
         self.encoder = PBJSONEncoder(sort_keys=True)
@@ -210,65 +211,9 @@ class TestBinaryEncoder(TestCase):
         )
         self.assertEqual(b'\xe2\x09countries\xc3\xe2\x04code\x82us\x04name\x8DUnited States\xe2\x81\x82ca\x82\x86Canada\xe2\x81\x82mx\x82\x86Mexico\x06region\x21\x03', encoded)
 
-    if c_make_encoder:
-        def test_speed(self):
-            sample = {
-                "countries": [
-                    {"code": "us", "name": "United States"},
-                    {"code": "ca", "name": "Canada"},
-                    {"code": "mx", "name": "Mexico"}
-                ],
-                "dimensions": {
-                    "thickness": 0.7,
-                    "width": 4.5
-                },
-                "toast": True,
-                "wrapped": False,
-                "remote": None,
-                "elapsed": 0.047220706939697266,
-                "level": "WARNING",
-                "levelno": 30,
-                "port": 8443,
-                "statusCode": 400,
-                "ts": 1369935672.178207,
-                "entries": [
-                    {
-                        "function": "func",
-                        "level": "WARNING",
-                        "levelno": 30,
-                        "module": "server.api",
-                        "text": "Invalid email or password",
-                        "ts": 1369935672.2237792
-                    },
-                    {
-                        "level": "INFO",
-                        "levelno": 20,
-                        "text": "POST /login 200",
-                        "ts": 1369935672.2253869
-                    }
-                ],
-                "request": {
-                    "hostname": "example.com",
-                    "method": "POST",
-                    "path": "/login",
-                    "params": {
-                        "email": "test@example.com",
-                        "format_type": "json",
-                        "pin": "********",
-                    }
-                },
-                "response": {
-                    "length": 56,
-                    "result": 200,
-                    "type": "application/json"
-                },
-                "user": {
-                    "country": "US",
-                    "ip": "198.168.0.10",
-                    "locale": "en-US"
-                }
-            }
-            iterations = 10000
+    def test_speed(self):
+        if pbjson._has_speedups():
+            iterations = 1000
 
             start = time()
             for i in range(iterations):
@@ -279,21 +224,9 @@ class TestBinaryEncoder(TestCase):
             start = time()
             for i in range(iterations):
                 binary_json_size = len(pbjson.dumps(sample))
-                # self.assertEqual(size, binary_json_size)
+                self.assertEqual(size, binary_json_size)
             binary_json_time = time() - start
 
-            start = time()
-            for i in range(iterations):
-                marshal_size = len(marshal.dumps(sample))
-            marshal_time = time() - start
-
-            start = time()
-            for i in range(iterations):
-                pickle_size = len(pickle.dumps(sample))
-            pickle_time = time() - start
-
-            # noinspection PyUnboundLocalVariable
-            print('\nPBJSON: {} seconds, {} bytes\nJSON: {} seconds ({}%), {} bytes ({}%)\nMarshal: {} seconds ({}%), {} bytes ({}%)\nPickle: {} seconds ({}%), {} bytes ({}%)'.format(binary_json_time, binary_json_size, json_time, int(json_time / binary_json_time * 100), json_size, int(json_size / binary_json_size * 100), marshal_time, int(marshal_time / binary_json_time * 100), marshal_size, int(marshal_size / binary_json_size * 100), pickle_time, int(pickle_time / binary_json_time * 100), pickle_size, int(pickle_size / binary_json_size * 100)))
             self.assertLess(binary_json_time, json_time)
 
 
@@ -328,6 +261,32 @@ if __name__ == '__main__':
     #     s = s[1:]
     # length = 1 + int((len(s)+1)/2)
     # print(v, b, v - b if v-b else '', 'Bad length {}, expected {}'.format(len(a), length) if len(a) != length else '')
+    iterations = 10000
+
+    start = time()
+    for i in range(iterations):
+        json_size = len(json.dumps(sample))
+    json_time = time() - start
+
+    size = len(pbjson.dumps(sample))
+    start = time()
+    for i in range(iterations):
+        binary_json_size = len(pbjson.dumps(sample))
+        # self.assertEqual(size, binary_json_size)
+    binary_json_time = time() - start
+
+    start = time()
+    for i in range(iterations):
+        marshal_size = len(marshal.dumps(sample))
+    marshal_time = time() - start
+
+    start = time()
+    for i in range(iterations):
+        pickle_size = len(pickle.dumps(sample))
+    pickle_time = time() - start
+
+    # noinspection PyUnboundLocalVariable
+    print('\nPBJSON: {} seconds, {} bytes\nJSON: {} seconds ({}%), {} bytes ({}%)\nMarshal: {} seconds ({}%), {} bytes ({}%)\nPickle: {} seconds ({}%), {} bytes ({}%)'.format(binary_json_time, binary_json_size, json_time, int(json_time / binary_json_time * 100), json_size, int(json_size / binary_json_size * 100), marshal_time, int(marshal_time / binary_json_time * 100), marshal_size, int(marshal_size / binary_json_size * 100), pickle_time, int(pickle_time / binary_json_time * 100), pickle_size, int(pickle_size / binary_json_size * 100)))
     main()
     # import cProfile
     # cProfile.run('cycle()')

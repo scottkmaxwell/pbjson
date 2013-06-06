@@ -7,11 +7,11 @@ def has_speedups():
     return encoder.c_make_encoder is not None
 
 
-class TestDecode(TestCase):
-    def test_make_scanner(self):
+class TestSpeedups(TestCase):
+    def test_make_decoder(self):
         if not has_speedups():
             return
-        self.assertRaises(AttributeError, decoder.c_decoder, 1)
+        self.assertRaises(TypeError, decoder.c_decoder, 1)
 
     def test_make_encoder(self):
         if not has_speedups():

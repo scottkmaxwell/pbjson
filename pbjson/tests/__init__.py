@@ -8,7 +8,7 @@ class OptionalExtensionTestSuite(unittest.TestSuite):
         import pbjson
         run = unittest.TestSuite.run
         run(self, result)
-        if pbjson._import_c_make_encoder() is None:
+        if not pbjson._has_speedups():
             TestMissingSpeedups().run(result)
         else:
             pbjson._toggle_speedups(False)
