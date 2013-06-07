@@ -50,7 +50,7 @@ class TestEncode(TestCase):
         self.assertEqual(encoded[3:], b'a' * 2100)
 
     def test_encode_unicode(self):
-        self.assertEqual(b'\x84test', encode(u'test'))
+        self.assertEqual(b'\x84test', encode('test'))
 
     def test_encode_bytes(self):
         if PY3:
@@ -124,9 +124,9 @@ class TestEncode(TestCase):
         self.assertEqual(b'\x45\x04\x00\x00\x00\x00', encode(-0x400000000))
 
     def test_sixteen_byte_int(self):
-        self.assertEqual(b'\x30\x10\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00', encode(0x4000000000000000000000000000000))
-        # self.assertEqual(b'\x45\x04\x00\x00\x00\x00', encode(-0x400000000))
-        self.assertEqual(b'\x50\x10\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00', encode(-0x4000000000000000000000000000000))
+        if not pbjson._has_encoder_speedups():
+            self.assertEqual(b'\x30\x10\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00', encode(0x4000000000000000000000000000000))
+            self.assertEqual(b'\x50\x10\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00', encode(-0x4000000000000000000000000000000))
 
     def test_simple_list(self):
         self.assertEqual(b'\xc3\x85jelly\x83jam\x86butter', encode(['jelly', 'jam', 'butter']))
@@ -253,7 +253,6 @@ if __name__ == '__main__':
     # length = 1 + int((len(s)+1)/2)
     # print(v, b, v - b if v-b else '', 'Bad length {}, expected {}'.format(len(a), length) if len(a) != length else '')
     iterations = 10000
-
     start = time()
     for i in range(iterations):
         json_size = len(json.dumps(sample))

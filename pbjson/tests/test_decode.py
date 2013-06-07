@@ -96,7 +96,7 @@ class TestDecode(TestCase):
         self.assertEqual('a' * 2100, decoded)
 
     def test_decode_unicode(self):
-        self.assertEqual(u'test', loads(b'\x84test'))
+        self.assertEqual('test', loads(b'\x84test'))
 
     def test_decode_bytes(self):
         if PY3:

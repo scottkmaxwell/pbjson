@@ -34,6 +34,10 @@
 #define FltEnc_E 0xe
 
 
+/* Gave up on supporting ints over long long in size because it caused memory corruption on Python 3.3.2 */
+/* #define SUPPORT_OVERSIZE_INTS */
+
+
 #define BUFFER_SIZE 0x1000
 
 #if PY_VERSION_HEX < 0x02070000
@@ -262,6 +266,7 @@ decode_int(PyDecoder *decoder, int length)
     if (!one_bite) {
         return PyLong_FromLong(0);
     }
+    PyObject *tmp = NULL;
     PyObject *more = NULL;
     PyObject *shifter = NULL;
     PyObject *result = decode_unsigned_long_long(decoder, one_bite);
@@ -275,9 +280,13 @@ decode_int(PyDecoder *decoder, int length)
             Py_XDECREF(shifter);
             shifter = PyLong_FromLong(length << 3);
         }
-        result = PyNumber_InPlaceLshift(result, shifter);
+        tmp = PyNumber_InPlaceLshift(result, shifter);
+        Py_DECREF(result);
+        result = tmp;
         more = decode_unsigned_long_long(decoder, one_bite);
-        result = PyNumber_InPlaceOr(result, more);
+        tmp = PyNumber_InPlaceOr(result, more);
+        Py_DECREF(result);
+        result = tmp;
         Py_XDECREF(more);
     }
     Py_XDECREF(shifter);
@@ -612,7 +621,7 @@ py_decode(PyObject* self UNUSED, PyObject *args, PyObject *kwds)
     if (decoder.float_class == Py_None || decoder.float_class == (PyObject *)&PyFloat_Type) {
         decoder.float_class = NULL;
     }
-    decoder.keys = NULL; //PyList_New(0);
+    decoder.keys = NULL;
     PyObject *result = decode_one(&decoder);
     Py_CLEAR(decoder.keys);
     return result;
@@ -776,7 +785,7 @@ encode_type_and_content(PyEncoder *rval, unsigned char token, unsigned char *byt
 }
 
 static int
-encode_long_no_overflow(PyEncoder *rval, long value)
+encode_long_no_overflow(PyEncoder *rval, long long value)
 {
     unsigned char buffer[8];
     unsigned char token;
@@ -786,15 +795,11 @@ encode_long_no_overflow(PyEncoder *rval, long value)
         token = Enc_NEGINT;
         value = -value;
     }
-#if LONG_MAX > 0x100000000
     int i=0;
     buffer[0] = (unsigned char)(value >> 56);
     buffer[1] = (unsigned char)(value >> 48);
     buffer[2] = (unsigned char)(value >> 40);
     buffer[3] = (unsigned char)(value >> 32);
-#else
-    int i=4;
-#endif
     buffer[4] = (unsigned char)(value >> 24);
     buffer[5] = (unsigned char)(value >> 16);
     buffer[6] = (unsigned char)(value >> 8);
@@ -813,6 +818,15 @@ encode_long_no_overflow(PyEncoder *rval, long value)
 static int
 encode_long(PyEncoder *rval, PyObject *obj)
 {
+    /* Gave up on supporting ints over long long in size because it caused memory corruption on Python 3.3.2 */
+#ifndef SUPPORT_OVERSIZE_INTS
+    long long l = PyLong_AsLongLong(obj);
+    if (!PyErr_Occurred()) {
+        return encode_long_no_overflow(rval, l);
+    }
+    return -1;
+    
+#else
     int overflow;
     int count = 0;
     int err;
@@ -827,8 +841,52 @@ encode_long(PyEncoder *rval, PyObject *obj)
         Py_DECREF(obj);
         obj = work;
     }
+#ifdef USE_TO_BYTES
+    static int has_to_bytes = -1;
+    if (has_to_bytes) {
+        int ret=1000;
+        PyObject *bit_length = NULL;
+        PyObject *length_obj = NULL;
+        PyObject *big = NULL;
+        PyObject *result = NULL;
+        PyObject *to_bytes = PyObject_GetAttrString(obj, "to_bytes");
+        if (to_bytes) {
+            bit_length = PyObject_GetAttrString(obj, "bit_length");
+            if (bit_length) {
+                length_obj = PyObject_CallFunctionObjArgs(bit_length, NULL);
+                if (length_obj) {
+                    unsigned long bits = PyLong_AsUnsignedLong(length_obj);
+                    Py_DECREF(length_obj);
+                    bits += 7;
+                    bits /= 8;
+                    length_obj = PyLong_FromUnsignedLong(bits);
+                    if (length_obj) {
+                        big = PyUnicode_FromString("big");
+                        if (big) {
+                            result = PyObject_CallFunctionObjArgs(to_bytes, length_obj, big, NULL);
+                            if (result) {
+                                ret = encode_type_and_content(rval, overflow>0 ? Enc_INT : Enc_NEGINT, (unsigned char *)PyString_AS_STRING(result), PyString_GET_SIZE(result));
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            has_to_bytes = 0;
+        }
+        Py_CLEAR(bit_length);
+        Py_CLEAR(length_obj);
+        Py_CLEAR(big);
+        Py_CLEAR(result);
+        Py_CLEAR(to_bytes);
+        if (ret <= 0) {
+            return ret;
+        }
+    }
+#endif
+    
     PyObject *list = PyList_New(0);
-    PyObject *n64 = PyLong_FromLong(64);
+    PyObject *n64 = PyLong_FromLongLong(64);
     do {
         unsigned char buffer[8];
         ull = PyLong_AsUnsignedLongLong(obj);
@@ -836,7 +894,9 @@ encode_long(PyEncoder *rval, PyObject *obj)
         if (err) {
             PyErr_Clear();
             ull = PyLong_AsUnsignedLongLongMask(obj);
-            obj = PyNumber_InPlaceRshift(obj, n64);
+            work = PyNumber_InPlaceRshift(obj, n64);
+            Py_DECREF(obj);
+            obj = work;
         }
         buffer[0] = (unsigned char)(ull >> 56);
         buffer[1] = (unsigned char)(ull >> 48);
@@ -848,7 +908,7 @@ encode_long(PyEncoder *rval, PyObject *obj)
         buffer[7] = (unsigned char)ull;
         int i=0;
         if (!err) {
-            for (i=0; i<8; i++) {
+            for (; i<8; i++) {
                 if (buffer[i])
                     break;
             }
@@ -874,14 +934,17 @@ encode_long(PyEncoder *rval, PyObject *obj)
     if (!work) {
         return -1;
     }
+    count = PyString_GET_SIZE(work);
     if (encode_type_and_length(rval, overflow>0 ? Enc_INT : Enc_NEGINT , count)) {
         Py_DECREF(work);
         return -1;
     }
-    
-    int ret = JSON_Accu_Accumulate(rval, (unsigned char*)PyString_AS_STRING(work), PyString_GET_SIZE(work));
+
+    unsigned char* str = (unsigned char*)PyString_AS_STRING(work);
+    int ret = JSON_Accu_Accumulate(rval, str, count);
     Py_DECREF(work);
     return ret;
+#endif
 }
 
 #define USE_FAST_DTOA
@@ -1060,6 +1123,7 @@ static int
 encode_float_from_charstring(PyEncoder *rval, const char* str, int len, unsigned char token)
 {
     int rv = -1;
+    int i;
     if (token != Enc_FLOAT) {
         rv = JSON_Accu_Accumulate(rval, &token, 1);
     }
@@ -1081,7 +1145,7 @@ encode_float_from_charstring(PyEncoder *rval, const char* str, int len, unsigned
         }
 
         rv = encode_type_and_length(rval, Enc_FLOAT, (len+1+nibble_index)/2);
-        for (int i=0; i<len && !rv; i++) {
+        for (i=0; i<len && !rv; i++) {
             char nibble = str[i];
             if (nibble>='0' && nibble<='9') {
                 nibble -= '0';
