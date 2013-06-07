@@ -110,6 +110,8 @@ def _decode_one(context, data):
 
 
 def py_decoder(data, document_class=None, float_class=None):
+    if isinstance(data, memoryview):
+        data = bytearray(data)
     float_class = float_class or float
     document_class = document_class or dict
     keys = []

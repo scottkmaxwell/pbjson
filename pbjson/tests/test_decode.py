@@ -198,6 +198,8 @@ class TestDecode(TestCase):
             "toppings": ["jelly", "jam", "butter"]
         }
         self.assertDictEqual(encoded, loads(b'\xe5\x06burned\x00\x0adimensions\xe2\x09thickness\x61\xd7\x05width\x62\x4d\x5d\x04name\x88the best\x05toast\x01\x08toppings\xc3\x85jelly\x83jam\x86butter'))
+        self.assertDictEqual(encoded, loads(bytearray(b'\xe5\x06burned\x00\x0adimensions\xe2\x09thickness\x61\xd7\x05width\x62\x4d\x5d\x04name\x88the best\x05toast\x01\x08toppings\xc3\x85jelly\x83jam\x86butter')))
+        self.assertDictEqual(encoded, loads(memoryview(b'\xe5\x06burned\x00\x0adimensions\xe2\x09thickness\x61\xd7\x05width\x62\x4d\x5d\x04name\x88the best\x05toast\x01\x08toppings\xc3\x85jelly\x83jam\x86butter')))
 
     def test_ordered_dict(self):
         encoded = OrderedDict((
