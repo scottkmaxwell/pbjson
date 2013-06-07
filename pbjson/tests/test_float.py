@@ -27,7 +27,7 @@ class TestFloat(TestCase):
             assert_type(length, len(encoded), num)
 
     def test_ints(self):
-        for num in [1, long_type(1), 1 << 32, 1 << 62]:
+        for num in [1, long_type(1), 1 << 32, 1 << 64]:
             self.assertEqual(pbjson.loads(pbjson.dumps(num)), num)
 
 if __name__ == '__main__':

@@ -33,11 +33,6 @@
 #define FltEnc_Decimal 0xd
 #define FltEnc_E 0xe
 
-
-/* Gave up on supporting ints over long long in size because it caused memory corruption on Python 3.3.2 */
-/* #define SUPPORT_OVERSIZE_INTS */
-
-
 #define BUFFER_SIZE 0x1000
 
 #if PY_VERSION_HEX < 0x02070000
@@ -821,75 +816,23 @@ encode_long_no_overflow(PyEncoder *rval, long long value)
 static int
 encode_long(PyEncoder *rval, PyObject *obj)
 {
-    /* Gave up on supporting ints over long long in size because it caused memory corruption on Python 3.3.2 */
-#ifndef SUPPORT_OVERSIZE_INTS
-    long long l = PyLong_AsLongLong(obj);
-    if (!PyErr_Occurred()) {
-        return encode_long_no_overflow(rval, l);
-    }
-    return -1;
-    
-#else
     int overflow;
     int count = 0;
     int err;
-    PyObject *work;
+    PyObject *work=NULL;
     unsigned PY_LONG_LONG ull;
     long l = PyLong_AsLongAndOverflow(obj, &overflow);
     if (!overflow) {
         return encode_long_no_overflow(rval, l);
     }
-    if (overflow < 0) {
-        work = PyNumber_Negative(obj);
-        Py_DECREF(obj);
-        obj = work;
+    if (overflow >= 0) {
+        Py_INCREF(obj);
+    } else {
+        obj = PyNumber_Negative(obj);
     }
-#ifdef USE_TO_BYTES
-    static int has_to_bytes = -1;
-    if (has_to_bytes) {
-        int ret=1000;
-        PyObject *bit_length = NULL;
-        PyObject *length_obj = NULL;
-        PyObject *big = NULL;
-        PyObject *result = NULL;
-        PyObject *to_bytes = PyObject_GetAttrString(obj, "to_bytes");
-        if (to_bytes) {
-            bit_length = PyObject_GetAttrString(obj, "bit_length");
-            if (bit_length) {
-                length_obj = PyObject_CallFunctionObjArgs(bit_length, NULL);
-                if (length_obj) {
-                    unsigned long bits = PyLong_AsUnsignedLong(length_obj);
-                    Py_DECREF(length_obj);
-                    bits += 7;
-                    bits /= 8;
-                    length_obj = PyLong_FromUnsignedLong(bits);
-                    if (length_obj) {
-                        big = PyUnicode_FromString("big");
-                        if (big) {
-                            result = PyObject_CallFunctionObjArgs(to_bytes, length_obj, big, NULL);
-                            if (result) {
-                                ret = encode_type_and_content(rval, overflow>0 ? Enc_INT : Enc_NEGINT, (unsigned char *)PyString_AS_STRING(result), PyString_GET_SIZE(result));
-                            }
-                        }
-                    }
-                }
-            }
-        } else {
-            has_to_bytes = 0;
-        }
-        Py_CLEAR(bit_length);
-        Py_CLEAR(length_obj);
-        Py_CLEAR(big);
-        Py_CLEAR(result);
-        Py_CLEAR(to_bytes);
-        if (ret <= 0) {
-            return ret;
-        }
-    }
-#endif
-    
     PyObject *list = PyList_New(0);
     PyObject *n64 = PyLong_FromLongLong(64);
+    int ret=0;
     do {
         unsigned char buffer[8];
         ull = PyLong_AsUnsignedLongLong(obj);
@@ -897,7 +840,7 @@ encode_long(PyEncoder *rval, PyObject *obj)
         if (err) {
             PyErr_Clear();
             ull = PyLong_AsUnsignedLongLongMask(obj);
-            work = PyNumber_InPlaceRshift(obj, n64);
+            work = PyNumber_Rshift(obj, n64);
             Py_DECREF(obj);
             obj = work;
         }
@@ -918,36 +861,22 @@ encode_long(PyEncoder *rval, PyObject *obj)
         }
         work = PyString_FromStringAndSize((const char*)buffer+i, 8-i);
         count += (8-i);
-        if (!work) {
-            Py_CLEAR(list);
-            Py_CLEAR(n64);
-            return -1;
-        }
-        if (PyList_Insert(list, 0, work)) {
+        if (work) {
+            ret = PyList_Insert(list, 0, work);
             Py_CLEAR(work);
-            Py_CLEAR(list);
-            Py_CLEAR(n64);
-            return -1;
+        } else {
+            ret = -1;
         }
-        Py_DECREF(work);
-    } while (err);
-    work = join_list_bytes(list);
+    } while (err && !ret);
+    if (!ret) {
+        work = join_list_bytes(list);
+        ret = encode_type_and_content(rval, overflow>0 ? Enc_INT : Enc_NEGINT, (unsigned char*)PyString_AS_STRING(work), count);
+        Py_CLEAR(work);
+    }
+    Py_DECREF(n64);
+    Py_DECREF(obj);
     Py_CLEAR(list);
-    Py_CLEAR(n64);
-    if (!work) {
-        return -1;
-    }
-    count = PyString_GET_SIZE(work);
-    if (encode_type_and_length(rval, overflow>0 ? Enc_INT : Enc_NEGINT , count)) {
-        Py_DECREF(work);
-        return -1;
-    }
-
-    unsigned char* str = (unsigned char*)PyString_AS_STRING(work);
-    int ret = JSON_Accu_Accumulate(rval, str, count);
-    Py_DECREF(work);
     return ret;
-#endif
 }
 
 #define USE_FAST_DTOA
