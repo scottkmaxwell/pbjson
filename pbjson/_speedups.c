@@ -613,8 +613,11 @@ py_decode(PyObject* self UNUSED, PyObject *args, PyObject *kwds)
     static char *kwlist[] = {"data", "document_class", "float_class", NULL};
 
     PyDecoder decoder;
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "y#OO:decode", kwlist, &decoder.data, &decoder.len, &decoder.document_class, &decoder.float_class))
+    Py_buffer buf;
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "y*OO:decode", kwlist, &buf, &decoder.document_class, &decoder.float_class))
         return NULL;
+    decoder.data = (unsigned char*)buf.buf;
+    decoder.len = buf.len;
     if (decoder.document_class == Py_None || decoder.document_class == (PyObject *)&PyDict_Type) {
         decoder.document_class = NULL;
     }
