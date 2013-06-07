@@ -11,7 +11,7 @@ class TestTuples(TestCase):
         # Default is True
         self.assertEqual(expect, json.dumps(t))
         # Ensure that the "default" does not get called
-        self.assertEqual(expect, json.dumps(t, default=repr))
+        self.assertEqual(expect, json.dumps(t, convert=repr))
 
     def test_tuple_array_dump(self):
         t = (1, 2, 3)
@@ -22,7 +22,7 @@ class TestTuples(TestCase):
         self.assertEqual(expect, sio.getvalue())
         # Ensure that the "default" does not get called
         sio = BytesIO()
-        json.dump(t, sio, default=repr)
+        json.dump(t, sio, convert=repr)
         self.assertEqual(expect, sio.getvalue())
 
 if __name__ == '__main__':

@@ -14,7 +14,7 @@ class TestFloat(TestCase):
         self.assertTrue((0 + nan) != nan)
 
     def test_floats(self):
-        assert_type = self.assertEqual if pbjson._has_speedups() else self.assertGreaterEqual
+        assert_type = self.assertEqual if pbjson._has_encoder_speedups() else self.assertGreaterEqual
         for num in [Decimal('1617161771.7650001'), math.pi, math.pi ** 100,
                     math.pi ** -100, 3.1, 3.1000000001, 3.1000000002, 3.10000000001, 3.100000000001, 3.1000000000001, 3.10000000000001, 0.00012345678901234572, 0.00012345678901234574, 0.00012345678901234576, 0.00012345678901234578, 152.79823, 152.798229999999975, 0.7]:
             encoded = pbjson.dumps(float(num))

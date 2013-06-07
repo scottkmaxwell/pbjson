@@ -84,20 +84,24 @@ typedef int Py_ssize_t;
 #define UNUSED
 #endif
 
-#define PyEncoder_Check(op) PyObject_TypeCheck(op, &PyEncoderType)
-#define PyEncoder_CheckExact(op) (Py_TYPE(op) == &PyEncoderType)
 
+typedef struct _PyEncoder {
+    PyObject *defaultfn;
+    PyObject *Decimal;
 
-static PyTypeObject PyEncoderType;
-
-typedef struct {
+    PyObject *item_sort_kw;
     PyObject *markers;      /* Dict for tracking circular references */
     PyObject *key_memo;     /* Place to keep track of previously used keys */
     PyObject *chunk_list;   /* A list of previously accumulated strings */
     PyObject *buffer;       /* A string for building up a chunk */
     unsigned char* ptr;     /* Pointer into the buffer */
     int position;           /* How far into the buffer we have written */
-} JSON_Accu;
+
+    int check_circular;
+    int skipkeys;
+    int for_json;
+
+} PyEncoder;
 
 typedef struct _PyDecoder {
     PyObject *document_class;
@@ -109,33 +113,11 @@ typedef struct _PyDecoder {
 
 
 static int
-JSON_Accu_Init(JSON_Accu *acc);
-static int
-JSON_Accu_Accumulate(JSON_Accu *acc, const unsigned char *bytes, size_t len);
+JSON_Accu_Accumulate(PyEncoder *acc, const unsigned char *bytes, size_t len);
 static PyObject *
-JSON_Accu_FinishAsList(JSON_Accu *acc);
+JSON_Accu_FinishAsList(PyEncoder *acc);
 static void
-JSON_Accu_Destroy(JSON_Accu *acc);
-
-typedef struct _PyEncoderObject {
-    PyObject_HEAD
-    PyObject *defaultfn;
-    PyObject *sort_keys;
-    PyObject *Decimal;
-    PyObject *skipkeys_bool;
-    int check_circular;
-    int skipkeys;
-    PyObject *item_sort_kw;
-    int for_json;
-} PyEncoderObject;
-
-static PyMemberDef encoder_members[] = {
-    {"default", T_OBJECT, offsetof(PyEncoderObject, defaultfn), READONLY, "default"},
-    {"sort_keys", T_OBJECT, offsetof(PyEncoderObject, sort_keys), READONLY, "sort_keys"},
-    /* Python 2.5 does not support T_BOOl */
-    {"skipkeys", T_OBJECT, offsetof(PyEncoderObject, skipkeys_bool), READONLY, "skipkeys"},
-    {NULL}
-};
+JSON_Accu_Destroy(PyEncoder *acc);
 
 static PyObject *
 decode_one(PyDecoder *decoder);
@@ -146,24 +128,16 @@ join_list_string(PyObject *lst);
 static PyObject *
 join_list_bytes(PyObject *lst);
 #endif
+static int
+encode_list(PyEncoder *encoder, PyObject *seq);
+static int
+encode_terminated_list(PyEncoder *encoder, PyObject *iter);
+static int
+encode_one(PyEncoder *encoder, PyObject *obj);
+static int
+encode_dict(PyEncoder *encoder, PyObject *dct);
 static PyObject *
-encoder_new(PyTypeObject *type, PyObject *args, PyObject *kwds);
-static int
-encoder_init(PyObject *self, PyObject *args, PyObject *kwds);
-static void
-encoder_dealloc(PyObject *self);
-static int
-encoder_clear(PyObject *self);
-static int
-encode_list(PyEncoderObject *s, JSON_Accu *rval, PyObject *seq);
-static int
-encode_terminated_list(PyEncoderObject *s, JSON_Accu *rval, PyObject *iter);
-static int
-encode_one(PyEncoderObject *s, JSON_Accu *rval, PyObject *obj);
-static int
-encode_dict(PyEncoderObject *s, JSON_Accu *rval, PyObject *dct);
-static PyObject *
-encode_dict_items(PyEncoderObject *s, PyObject *dct);
+encode_dict_items(PyEncoder *encoder, PyObject *dct);
 static void
 raise_errmsg(const char *msg);
 static int
@@ -259,12 +233,6 @@ static void fix_special_floats()
         memcpy(&nan_value, nan_string_be, 8);
     }
 }
-
-PyDoc_STRVAR(pydoc_decode,
-    "decode(bytes, document_class, float_class) -> object\n"
-    "\n"
-    "Decode the byte object into an object."
-);
 
 static void
 set_overflow()
@@ -624,6 +592,12 @@ decode_one(PyDecoder *decoder)
     return NULL;
 }
 
+PyDoc_STRVAR(pydoc_decode,
+             "decode(bytes, document_class, float_class) -> object\n"
+             "\n"
+             "Decode the byte object into an object."
+             );
+
 static PyObject *
 py_decode(PyObject* self UNUSED, PyObject *args, PyObject *kwds)
 {
@@ -650,20 +624,7 @@ py_decode(PyObject* self UNUSED, PyObject *args, PyObject *kwds)
 
 
 static int
-JSON_Accu_Init(JSON_Accu *acc)
-{
-    /* Lazily allocated */
-    acc->markers = NULL;
-    acc->key_memo = NULL;
-    acc->chunk_list = NULL;
-    acc->buffer = NULL;
-    acc->ptr = NULL;
-    acc->position = 0;
-    return 0;
-}
-
-static int
-flush_accumulator(JSON_Accu *acc)
+flush_accumulator(PyEncoder *acc)
 {
     if (acc->buffer) {
         if (acc->chunk_list == NULL) {
@@ -685,7 +646,7 @@ flush_accumulator(JSON_Accu *acc)
 }
 
 static int
-JSON_Accu_Accumulate(JSON_Accu *acc, const unsigned char *bytes, size_t len)
+JSON_Accu_Accumulate(PyEncoder *acc, const unsigned char *bytes, size_t len)
 {
     if (!len) {
         return 0;
@@ -720,26 +681,26 @@ JSON_Accu_Accumulate(JSON_Accu *acc, const unsigned char *bytes, size_t len)
 }
 
 static PyObject *
-JSON_Accu_FinishAsList(JSON_Accu *acc)
+JSON_Accu_FinishAsList(PyEncoder *acc)
 {
     int ret;
-    PyObject *res;
+    PyObject *res=NULL;
     
     ret = flush_accumulator(acc);
-    if (ret) {
-        Py_CLEAR(acc->chunk_list);
-        return NULL;
+    if (!ret) {
+        res = acc->chunk_list;
+        acc->chunk_list = NULL;
+        if (res == NULL)
+            res = PyList_New(0);
     }
-    res = acc->chunk_list;
-    acc->chunk_list = NULL;
-    if (res == NULL)
-        return PyList_New(0);
+    JSON_Accu_Destroy(acc);
     return res;
 }
 
 static void
-JSON_Accu_Destroy(JSON_Accu *acc)
+JSON_Accu_Destroy(PyEncoder *acc)
 {
+    Py_CLEAR(acc->item_sort_kw);
     Py_CLEAR(acc->markers);
     Py_CLEAR(acc->key_memo);
     Py_CLEAR(acc->chunk_list);
@@ -778,7 +739,7 @@ _has_for_json_hook(PyObject *obj)
 
 
 static int
-encode_type_and_length(JSON_Accu *rval, unsigned char token, int length)
+encode_type_and_length(PyEncoder *rval, unsigned char token, int length)
 {
     unsigned char buffer[5];
     if (length < 16) {
@@ -806,7 +767,7 @@ encode_type_and_length(JSON_Accu *rval, unsigned char token, int length)
 
 
 static int
-encode_type_and_content(JSON_Accu *rval, unsigned char token, unsigned char *bytes, int length)
+encode_type_and_content(PyEncoder *rval, unsigned char token, unsigned char *bytes, int length)
 {
     if (encode_type_and_length(rval, token, length)) {
         return -1;
@@ -815,7 +776,7 @@ encode_type_and_content(JSON_Accu *rval, unsigned char token, unsigned char *byt
 }
 
 static int
-encode_long_no_overflow(JSON_Accu *rval, long value)
+encode_long_no_overflow(PyEncoder *rval, long value)
 {
     unsigned char buffer[8];
     unsigned char token;
@@ -850,7 +811,7 @@ encode_long_no_overflow(JSON_Accu *rval, long value)
 }
 
 static int
-encode_long(JSON_Accu *rval, PyObject *obj)
+encode_long(PyEncoder *rval, PyObject *obj)
 {
     int overflow;
     int count = 0;
@@ -1096,7 +1057,7 @@ unsigned char dtoa(double value, char str[FLOAT_BUFFER])
 }
 
 static int
-encode_float_from_charstring(JSON_Accu *rval, const char* str, int len, unsigned char token)
+encode_float_from_charstring(PyEncoder *rval, const char* str, int len, unsigned char token)
 {
     int rv = -1;
     if (token != Enc_FLOAT) {
@@ -1155,7 +1116,7 @@ encode_float_from_charstring(JSON_Accu *rval, const char* str, int len, unsigned
 }
 
 static int
-encode_float(JSON_Accu *rval, PyObject *obj)
+encode_float(PyEncoder *rval, PyObject *obj)
 {
 #if 1
     char buffer[FLOAT_BUFFER];
@@ -1196,7 +1157,7 @@ encode_float(JSON_Accu *rval, PyObject *obj)
 }
 
 static int
-encode_decimal(JSON_Accu *rval, PyObject *obj)
+encode_decimal(PyEncoder *rval, PyObject *obj)
 {
     PyObject *encoded = PyObject_Str(obj);
     if (!encoded) {
@@ -1231,7 +1192,7 @@ encode_decimal(JSON_Accu *rval, PyObject *obj)
 
 
 static int
-encode_key(JSON_Accu *rval, PyObject *obj)
+encode_key(PyEncoder *rval, PyObject *obj)
 {
     PyObject *encoded = NULL;
     PyObject *value = NULL;
@@ -1277,7 +1238,7 @@ encode_key(JSON_Accu *rval, PyObject *obj)
 }
 
 static int
-check_circular(JSON_Accu *rval, PyObject *obj, PyObject **ident_ptr)
+check_circular(PyEncoder *rval, PyObject *obj, PyObject **ident_ptr)
 {
     int has_key;
     PyObject *ident = NULL;
@@ -1306,60 +1267,60 @@ check_circular(JSON_Accu *rval, PyObject *obj, PyObject **ident_ptr)
 }
 
 static int
-encode_one(PyEncoderObject *s, JSON_Accu *rval, PyObject *obj)
+encode_one(PyEncoder *encoder, PyObject *obj)
 {
-    /* Encode Python object obj to a JSON term, rval is a PyList */
+    /* Encode Python object obj to a byte object */
     int rv = -1;
     do {
         if (obj == Py_None || obj == Py_True || obj == Py_False) {
             unsigned char c = obj == Py_False ? 0 : obj == Py_True ? 1 : 2;
-            rv = JSON_Accu_Accumulate(rval, &c, 1);
+            rv = JSON_Accu_Accumulate(encoder, &c, 1);
         }
         else if (PyUnicode_Check(obj))
         {
             PyObject *encoded = PyUnicode_AsUTF8String(obj);
             if (encoded != NULL) {
-                rv = encode_type_and_content(rval, Enc_STRING, (unsigned char*)PyString_AS_STRING(encoded), PyString_GET_SIZE(encoded));
+                rv = encode_type_and_content(encoder, Enc_STRING, (unsigned char*)PyString_AS_STRING(encoded), PyString_GET_SIZE(encoded));
             }
         }
 #if PY_MAJOR_VERSION >= 3
         else if (PyBytes_Check(obj))
         {
-            rv = encode_type_and_content(rval, Enc_BINARY, (unsigned char*)PyBytes_AS_STRING(obj), PyBytes_GET_SIZE(obj));
+            rv = encode_type_and_content(encoder, Enc_BINARY, (unsigned char*)PyBytes_AS_STRING(obj), PyBytes_GET_SIZE(obj));
         }
 #else
         else if (PyString_Check(obj))
         {
-            rv = encode_type_and_content(rval, Enc_STRING, (unsigned char*)PyString_AS_STRING(obj), PyString_GET_SIZE(obj));
+            rv = encode_type_and_content(encoder, Enc_STRING, (unsigned char*)PyString_AS_STRING(obj), PyString_GET_SIZE(obj));
         }
         else if (PyInt_Check(obj)) {
-            rv = encode_long_no_overflow(rval, PyInt_AS_LONG(obj));
+            rv = encode_long_no_overflow(encoder, PyInt_AS_LONG(obj));
         }
 #endif
         else if (PyLong_Check(obj)) {
-            rv = encode_long(rval, obj);
+            rv = encode_long(encoder, obj);
         }
         else if (PyFloat_Check(obj)) {
-            rv = encode_float(rval, obj);
+            rv = encode_float(encoder, obj);
         }
-        else if (s->for_json && _has_for_json_hook(obj)) {
+        else if (encoder->for_json && _has_for_json_hook(obj)) {
             PyObject *newobj;
             if (Py_EnterRecursiveCall(" while encoding a JSON object"))
                 return rv;
             newobj = PyObject_CallMethod(obj, "for_json", NULL);
             if (newobj != NULL) {
-                rv = encode_one(s, rval, newobj);
+                rv = encode_one(encoder, newobj);
                 Py_DECREF(newobj);
             }
             Py_LeaveRecursiveCall();
         }
-        else if (PyObject_TypeCheck(obj, (PyTypeObject *)s->Decimal)) {
-            rv = encode_decimal(rval, obj);
+        else if (encoder->Decimal && PyObject_TypeCheck(obj, (PyTypeObject *)encoder->Decimal)) {
+            rv = encode_decimal(encoder, obj);
         }
         else if (PyDict_Check(obj)) {
             if (Py_EnterRecursiveCall(" while encoding a JSON object"))
                 return rv;
-            rv = encode_dict(s, rval, obj);
+            rv = encode_dict(encoder, obj);
             Py_LeaveRecursiveCall();
         }
         else if (_is_namedtuple(obj)) {
@@ -1368,7 +1329,7 @@ encode_one(PyEncoderObject *s, JSON_Accu *rval, PyObject *obj)
                 return rv;
             newobj = PyObject_CallMethod(obj, "_asdict", NULL);
             if (newobj != NULL) {
-                rv = encode_dict(s, rval, newobj);
+                rv = encode_dict(encoder, newobj);
                 Py_DECREF(newobj);
             }
             Py_LeaveRecursiveCall();
@@ -1376,7 +1337,7 @@ encode_one(PyEncoderObject *s, JSON_Accu *rval, PyObject *obj)
         else if (PyObject_Length(obj) >= 0) {
             if (Py_EnterRecursiveCall(" while encoding a JSON object"))
                 return rv;
-            rv = encode_list(s, rval, obj);
+            rv = encode_list(encoder, obj);
             Py_LeaveRecursiveCall();
         }
         else {
@@ -1385,25 +1346,25 @@ encode_one(PyEncoderObject *s, JSON_Accu *rval, PyObject *obj)
                 return rv;
             PyObject *iter = PyObject_GetIter(obj);
             if (iter) {
-                rv = encode_terminated_list(s, rval, iter);
+                rv = encode_terminated_list(encoder, iter);
                 Py_XDECREF(iter);
             } else {
                 PyObject *ident = NULL;
                 PyObject *newobj;
-                if (s->check_circular && check_circular(rval, obj, &ident)) {
+                if (encoder->check_circular && check_circular(encoder, obj, &ident)) {
                     break;
                 }
                 PyErr_Clear();
-                newobj = PyObject_CallFunctionObjArgs(s->defaultfn, obj, NULL);
+                newobj = PyObject_CallFunctionObjArgs(encoder->defaultfn, obj, NULL);
                 if (newobj) {
-                    rv = encode_one(s, rval, newobj);
-                    Py_DECREF(newobj);
+                    rv = encode_one(encoder, newobj);
+                    Py_XDECREF(newobj);
                 }
                 if (rv) {
                     rv = -1;
                 }
                 else if (ident != NULL) {
-                    if (PyDict_DelItem(rval->markers, ident)) {
+                    if (PyDict_DelItem(encoder->markers, ident)) {
                         rv = -1;
                     }
                 }
@@ -1416,7 +1377,7 @@ encode_one(PyEncoderObject *s, JSON_Accu *rval, PyObject *obj)
 }
 
 static int
-encode_dict(PyEncoderObject *s, JSON_Accu *rval, PyObject *dct)
+encode_dict(PyEncoder *encoder, PyObject *dct)
 {
     /* Encode Python dict dct a JSON term */
     PyObject *kstr = NULL;
@@ -1428,16 +1389,16 @@ encode_dict(PyEncoderObject *s, JSON_Accu *rval, PyObject *dct)
     Py_ssize_t idx;
 
     int len = PyDict_Size(dct);
-    if (encode_type_and_length(rval, Enc_DICT, len)) {
+    if (encode_type_and_length(encoder, Enc_DICT, len)) {
         return -1;
     }
 
     if (len) {
-        if (s->check_circular && check_circular(rval, dct, &ident)) {
+        if (encoder->check_circular && check_circular(encoder, dct, &ident)) {
             goto bail;
         }
         
-        iter = encode_dict_items(s, dct);
+        iter = encode_dict_items(encoder, dct);
         if (iter == NULL)
             goto bail;
         
@@ -1455,17 +1416,17 @@ encode_dict(PyEncoderObject *s, JSON_Accu *rval, PyObject *dct)
             if (value == NULL)
                 goto bail;
 
-            encoded = rval->key_memo ? PyDict_GetItem(rval->key_memo, key) : NULL;
+            encoded = encoder->key_memo ? PyDict_GetItem(encoder->key_memo, key) : NULL;
             if (encoded != NULL) {
                 long value = PyLong_AS_LONG(encoded);
                 unsigned char l = 0x80 | (unsigned char)value;
-                if (JSON_Accu_Accumulate(rval, &l, 1)) {
+                if (JSON_Accu_Accumulate(encoder, &l, 1)) {
                     goto bail;
                 }
-            } else if (encode_key(rval, key)) {
+            } else if (encode_key(encoder, key)) {
                 goto bail;
             }
-            if (encode_one(s, rval, value))
+            if (encode_one(encoder, value))
                 goto bail;
             Py_CLEAR(item);
             idx += 1;
@@ -1474,7 +1435,7 @@ encode_dict(PyEncoderObject *s, JSON_Accu *rval, PyObject *dct)
         if (PyErr_Occurred())
             goto bail;
         if (ident != NULL) {
-            if (PyDict_DelItem(rval->markers, ident))
+            if (PyDict_DelItem(encoder->markers, ident))
                 goto bail;
             Py_CLEAR(ident);
         }
@@ -1492,19 +1453,19 @@ bail:
 
 
 static int
-encode_list(PyEncoderObject *s, JSON_Accu *rval, PyObject *seq)
+encode_list(PyEncoder *encoder, PyObject *seq)
 {
     /* Encode Python list seq to a JSON term */
     PyObject *iter = NULL;
     PyObject *obj = NULL;
     PyObject *ident = NULL;
     int len = PyObject_Length(seq);
-    if (encode_type_and_length(rval, Enc_LIST, len)) {
+    if (encode_type_and_length(encoder, Enc_LIST, len)) {
         return -1;
     }
 
     if (len) {
-        if (s->check_circular && check_circular(rval, seq, &ident)) {
+        if (encoder->check_circular && check_circular(encoder, seq, &ident)) {
             goto bail;
         }
         
@@ -1513,7 +1474,7 @@ encode_list(PyEncoderObject *s, JSON_Accu *rval, PyObject *seq)
             goto bail;
         
         while ((obj = PyIter_Next(iter))) {
-            if (encode_one(s, rval, obj))
+            if (encode_one(encoder, obj))
                 goto bail;
             Py_CLEAR(obj);
         }
@@ -1521,7 +1482,7 @@ encode_list(PyEncoderObject *s, JSON_Accu *rval, PyObject *seq)
         if (PyErr_Occurred())
             goto bail;
         if (ident != NULL) {
-            if (PyDict_DelItem(rval->markers, ident))
+            if (PyDict_DelItem(encoder->markers, ident))
                 goto bail;
             Py_CLEAR(ident);
         }
@@ -1536,17 +1497,17 @@ bail:
 }
 
 static int
-encode_terminated_list(PyEncoderObject *s, JSON_Accu *rval, PyObject *iter)
+encode_terminated_list(PyEncoder *encoder, PyObject *iter)
 {
     /* Encode Python list seq to a JSON term */
     PyObject *obj = NULL;
     
     unsigned char c = Enc_TERMINATED_LIST;
-    if (JSON_Accu_Accumulate(rval, &c, 1))
+    if (JSON_Accu_Accumulate(encoder, &c, 1))
         return -1;
 
     while ((obj = PyIter_Next(iter))) {
-        int rv = encode_one(s, rval, obj);
+        int rv = encode_one(encoder, obj);
         Py_XDECREF(obj);
         if (rv) {
             return -1;
@@ -1555,13 +1516,13 @@ encode_terminated_list(PyEncoderObject *s, JSON_Accu *rval, PyObject *iter)
     if (PyErr_Occurred())
         return -1;
     c = Enc_TERMINATOR;
-    if (JSON_Accu_Accumulate(rval, &c, 1))
+    if (JSON_Accu_Accumulate(encoder, &c, 1))
         return -1;
     return 0;
 }
 
 static PyObject *
-encode_dict_items(PyEncoderObject *s, PyObject *dct)
+encode_dict_items(PyEncoder *encoder, PyObject *dct)
 {
     PyObject *items;
     PyObject *iter = NULL;
@@ -1587,7 +1548,7 @@ encode_dict_items(PyEncoderObject *s, PyObject *dct)
     Py_DECREF(items);
     if (iter == NULL)
         return NULL;
-    if (s->item_sort_kw == Py_None)
+    if (encoder->item_sort_kw == NULL)
         return iter;
     lst = PyList_New(0);
     if (lst == NULL)
@@ -1622,7 +1583,7 @@ encode_dict_items(PyEncoderObject *s, PyObject *dct)
     sortfun = PyObject_GetAttrString(lst, "sort");
     if (sortfun == NULL)
         goto bail;
-    if (!PyObject_Call(sortfun, sortargs, s->item_sort_kw))
+    if (!PyObject_Call(sortfun, sortargs, encoder->item_sort_kw))
         goto bail;
     Py_CLEAR(sortfun);
     iter = PyObject_GetIter(lst);
@@ -1637,173 +1598,61 @@ bail:
     return NULL;
 }
 
-static PyObject *
-encoder_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
-{
-    PyEncoderObject *s;
-    s = (PyEncoderObject *)type->tp_alloc(type, 0);
-    if (s != NULL) {
-        s->defaultfn = NULL;
-        s->sort_keys = NULL;
-        s->item_sort_kw = NULL;
-        s->Decimal = NULL;
-    }
-    return (PyObject *)s;
-}
+
+PyDoc_STRVAR(pydoc_encode,
+             "encode(object, Decimal, skip_illegal_keys, check_circular, sort_keys, convert, use_for_json) -> object\n"
+             "\n"
+             "Encode the object into a byte object."
+             );
+
 
 static int
-encoder_init(PyObject *self, PyObject *args, PyObject *kwds)
+convert_to_bool(PyObject *o, int *value)
 {
-    /* initialize Encoder object */
-    static char *kwlist[] = {"check_circular", "default", "sort_keys", "skipkeys", "for_json", "Decimal", NULL};
-    
-    PyEncoderObject *s;
-    PyObject *check_circular, *defaultfn;
-    PyObject *sort_keys, *skipkeys, *for_json;
-    PyObject *Decimal;
-    
-    assert(PyEncoder_Check(self));
-    s = (PyEncoderObject *)self;
-    
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOOOOO:make_encoder", kwlist,
-                                     &check_circular, &defaultfn,
-                                     &sort_keys, &skipkeys,
-                                     &for_json, &Decimal))
-        return -1;
-    
-    s->check_circular = PyObject_IsTrue(check_circular);
-    s->defaultfn = defaultfn;
-    s->skipkeys_bool = skipkeys;
-    s->skipkeys = PyObject_IsTrue(skipkeys);
-    if (sort_keys == Py_None) {
-        Py_INCREF(Py_None);
-        s->item_sort_kw = Py_None;
-    }
-    else {
-        s->item_sort_kw = PyDict_New();
-        if (s->item_sort_kw == NULL)
-            return -1;
-        if (PyDict_SetItemString(s->item_sort_kw, "key", sort_keys))
-            return -1;
-    }
-    s->sort_keys = sort_keys;
-    s->Decimal = Decimal;
-    s->for_json = PyObject_IsTrue(for_json);
-    
-    Py_INCREF(s->defaultfn);
-    Py_INCREF(s->skipkeys_bool);
-    Py_INCREF(s->sort_keys);
-    Py_INCREF(s->Decimal);
-    return 0;
+    *value = (o && PyObject_IsTrue(o)) ? 1 : 0;
+    return 1;
 }
 
 static PyObject *
-encoder_call(PyObject *self, PyObject *args, PyObject *kwds)
+py_encode(PyObject* self UNUSED, PyObject *args, PyObject *kwds)
 {
-    /* Python callable interface to encode_listencode_obj */
-    PyObject *obj;
-    PyEncoderObject *s;
-    JSON_Accu rval;
-    assert(PyEncoder_Check(self));
-    s = (PyEncoderObject *)self;
-    if (!PyArg_ParseTuple(args, "O:_iterencode", &obj))
+    static char *kwlist[] = {"object", "decimal", "skip_illegal_keys", "check_circular", "sort_keys", "convert", "use_for_json", NULL};
+    
+    PyObject *obj=NULL;
+    PyObject *sort_keys=NULL;
+    PyEncoder encoder;
+    memset(&encoder, 0, sizeof(encoder));
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|OO&O&OOO&:decode", kwlist, &obj, &encoder.Decimal, convert_to_bool, &encoder.skipkeys, convert_to_bool, &encoder.check_circular, &sort_keys, &encoder.defaultfn, convert_to_bool, &encoder.for_json))
         return NULL;
-    if (JSON_Accu_Init(&rval))
-        return NULL;
-    if (encode_one(s, &rval, obj)) {
-        JSON_Accu_Destroy(&rval);
+    if (encoder.Decimal == Py_None || encoder.Decimal == (PyObject *)&PyFloat_Type) {
+        encoder.Decimal = NULL;
+    }
+    if (sort_keys != Py_None) {
+        encoder.item_sort_kw = PyDict_New();
+        if (encoder.item_sort_kw == NULL)
+            return NULL;
+        if (PyDict_SetItemString(encoder.item_sort_kw, "key", sort_keys)) {
+            Py_CLEAR(encoder.item_sort_kw);
+            return NULL;
+        }
+    }
+    if (encode_one(&encoder, obj)) {
+        JSON_Accu_Destroy(&encoder);
         return NULL;
     }
-    return JSON_Accu_FinishAsList(&rval);
+    return JSON_Accu_FinishAsList(&encoder);
 }
 
-
-static void
-encoder_dealloc(PyObject *self)
-{
-    /* Deallocate Encoder */
-    encoder_clear(self);
-    Py_TYPE(self)->tp_free(self);
-}
-
-static int
-encoder_traverse(PyObject *self, visitproc visit, void *arg)
-{
-    PyEncoderObject *s;
-    assert(PyEncoder_Check(self));
-    s = (PyEncoderObject *)self;
-    Py_VISIT(s->defaultfn);
-    Py_VISIT(s->sort_keys);
-    Py_VISIT(s->item_sort_kw);
-    Py_VISIT(s->Decimal);
-    return 0;
-}
-
-static int
-encoder_clear(PyObject *self)
-{
-    /* Deallocate Encoder */
-    PyEncoderObject *s;
-    assert(PyEncoder_Check(self));
-    s = (PyEncoderObject *)self;
-    Py_CLEAR(s->defaultfn);
-    Py_CLEAR(s->skipkeys_bool);
-    Py_CLEAR(s->sort_keys);
-    Py_CLEAR(s->item_sort_kw);
-    Py_CLEAR(s->Decimal);
-    return 0;
-}
-
-PyDoc_STRVAR(encoder_doc, "_iterencode(obj) -> iterable");
-
-static
-PyTypeObject PyEncoderType = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    "pbjson._speedups.Encoder",       /* tp_name */
-    sizeof(PyEncoderObject), /* tp_basicsize */
-    0,                    /* tp_itemsize */
-    encoder_dealloc, /* tp_dealloc */
-    0,                    /* tp_print */
-    0,                    /* tp_getattr */
-    0,                    /* tp_setattr */
-    0,                    /* tp_compare */
-    0,                    /* tp_repr */
-    0,                    /* tp_as_number */
-    0,                    /* tp_as_sequence */
-    0,                    /* tp_as_mapping */
-    0,                    /* tp_hash */
-    encoder_call,         /* tp_call */
-    0,                    /* tp_str */
-    0,                    /* tp_getattro */
-    0,                    /* tp_setattro */
-    0,                    /* tp_as_buffer */
-    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC,   /* tp_flags */
-    encoder_doc,          /* tp_doc */
-    encoder_traverse,     /* tp_traverse */
-    encoder_clear,        /* tp_clear */
-    0,                    /* tp_richcompare */
-    0,                    /* tp_weaklistoffset */
-    0,                    /* tp_iter */
-    0,                    /* tp_iternext */
-    0,                    /* tp_methods */
-    encoder_members,      /* tp_members */
-    0,                    /* tp_getset */
-    0,                    /* tp_base */
-    0,                    /* tp_dict */
-    0,                    /* tp_descr_get */
-    0,                    /* tp_descr_set */
-    0,                    /* tp_dictoffset */
-    encoder_init,         /* tp_init */
-    0,                    /* tp_alloc */
-    encoder_new,          /* tp_new */
-    0,                    /* tp_free */
-};
 
 static PyMethodDef speedups_methods[] = {
     {"decode",
         (PyCFunction)py_decode,
         METH_VARARGS,
         pydoc_decode},
+    {"encode",
+        (PyCFunction)py_encode,
+        METH_VARARGS,
+        pydoc_encode},
     {NULL, NULL, 0, NULL}
 };
 
@@ -1828,17 +1677,12 @@ static PyObject *
 moduleinit(void)
 {
     PyObject *m;
-    PyEncoderType.tp_new = PyType_GenericNew;
-    if (PyType_Ready(&PyEncoderType) < 0)
-        return NULL;
 
 #if PY_MAJOR_VERSION >= 3
     m = PyModule_Create(&moduledef);
 #else
     m = Py_InitModule3("_speedups", speedups_methods, module_doc);
 #endif
-    Py_INCREF((PyObject*)&PyEncoderType);
-    PyModule_AddObject(m, "make_encoder", (PyObject*)&PyEncoderType);
     return m;
 }
 

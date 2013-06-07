@@ -239,7 +239,7 @@ class TestDecode(TestCase):
         self.assertEqual(encoded, loads(b'\xe2\x09countries\xc3\xe2\x04code\x82us\x04name\x8DUnited States\xe2\x81\x82ca\x82\x86Canada\xe2\x81\x82mx\x82\x86Mexico\x06region\x21\x03'))
 
     def test_speed(self):
-        if pbjson._has_speedups():
+        if pbjson._has_decoder_speedups():
             encoded = json.dumps(sample)
             start = time()
             for i in range(100):

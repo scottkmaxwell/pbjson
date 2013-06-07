@@ -7,13 +7,14 @@ class OptionalExtensionTestSuite(unittest.TestSuite):
     def run(self, result, debug=False):
         import pbjson
         run = unittest.TestSuite.run
-        run(self, result)
-        if not pbjson._has_speedups():
-            TestMissingSpeedups().run(result)
-        else:
-            pbjson._toggle_speedups(False)
+        for i in range(1):
             run(self, result)
-            pbjson._toggle_speedups(True)
+            if not pbjson._has_encoder_speedups() and not pbjson._has_decoder_speedups():
+                TestMissingSpeedups().run(result)
+            else:
+                pbjson._toggle_speedups(False)
+                run(self, result)
+                pbjson._toggle_speedups(True)
         return result
 
 

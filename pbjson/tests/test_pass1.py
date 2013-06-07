@@ -65,7 +65,7 @@ JSON = [
 class TestPass1(TestCase):
     def test_parse(self):
         # test in/out equivalence and parsing
-        encoded = json.dumps(JSON, skipkeys=True)
+        encoded = json.dumps(JSON, skip_illegal_keys=True)
         decoded = json.loads(encoded)
         self.assertEqual(JSON, decoded)
 

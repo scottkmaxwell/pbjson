@@ -1,25 +1,17 @@
 from unittest import TestCase, main
-
-from pbjson import encoder, decoder
-
-
-def has_speedups():
-    return encoder.c_make_encoder is not None
+import pbjson
 
 
 class TestSpeedups(TestCase):
     def test_make_decoder(self):
-        if not has_speedups():
+        if not pbjson._has_decoder_speedups():
             return
-        self.assertRaises(TypeError, decoder.c_decoder, 1)
+        self.assertRaises(TypeError, pbjson.decoder.c_decoder, 1)
 
     def test_make_encoder(self):
-        if not has_speedups():
+        if not pbjson._has_encoder_speedups():
             return
-        self.assertRaises(TypeError, encoder.c_make_encoder,
-                          None,
-                          "\xCD\x7D\x3D\x4E\x12\x4C\xF9\x79\xD7\x52\xBA\x82\xF2\x27\x4A\x7D\xA0\xCA\x75",
-                          None)
+        self.assertRaises(TypeError, pbjson.encoder.c_iterencoder)
 
 if __name__ == '__main__':
     main()

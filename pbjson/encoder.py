@@ -3,7 +3,7 @@ from __future__ import absolute_import
 __author__ = 'Scott Maxwell'
 
 # noinspection PyStatementEffect
-"""Implementation of PBJSONEncoder"""
+"""Implementation of PBJSON encoder"""
 
 from operator import itemgetter
 from decimal import Decimal
@@ -16,12 +16,9 @@ def _import_speedups():
     try:
         # noinspection PyUnresolvedReferences
         from . import _speedups
-        return _speedups.make_encoder
+        return _speedups.encode
     except (ImportError, AttributeError):
         return None
-
-
-c_make_encoder = _import_speedups()
 
 
 def encode_type_and_length(data_type, length):
@@ -45,130 +42,54 @@ def encode_type_and_content(data_type, content):
     return pack('>BL%ds' % length, data_type | 0x1f, length, content)
 
 
-class PBJSONEncoder(object):
-    """Extensible JSON <http://json.org> encoder for Python data structures.
+def default_converter(o):
+    """Implement this function such that it returns
+    a serializable object for ``o`` or calls raises a ``TypeError``.
 
-    Supports the following objects and types by default:
+    For example, to support arbitrary iterators, you could
+    implement default like this::
 
-    +-------------------+---------------+
-    | Python            | JSON          |
-    +===================+===============+
-    | dict, namedtuple  | object        |
-    +-------------------+---------------+
-    | list, tuple       | array         |
-    +-------------------+---------------+
-    | str, unicode      | string        |
-    +-------------------+---------------+
-    | int, long, float  | number        |
-    +-------------------+---------------+
-    | True              | true          |
-    +-------------------+---------------+
-    | False             | false         |
-    +-------------------+---------------+
-    | None              | null          |
-    +-------------------+---------------+
-
-    To extend this to recognize other objects, subclass and implement a
-    ``.default()`` method with another method that returns a serializable
-    object for ``o`` if possible, otherwise it should call the superclass
-    implementation (to raise ``TypeError``).
+        def default(o):
+            try:
+                iterable = iter(o)
+            except TypeError:
+                pass
+            else:
+                return list(iterable)
+            raise TypeError(repr(o) + " is not JSON serializable")
 
     """
+    raise TypeError(repr(o) + " is not PBJSON serializable")
 
-    # noinspection PyUnusedLocal
-    def __init__(self, skipkeys=False, check_circular=True, sort_keys=False,
-                 default=None, for_json=False):
-        """Constructor for PBJSONEncoder, with sensible defaults.
 
-        If skipkeys is false, then it is a TypeError to attempt
-        encoding of keys that are not str.  If skipkeys is True,
-        such items are simply skipped.
+def encode(obj, skip_illegal_keys=True, check_circular=True, sort_keys=None, convert=default_converter, use_for_json=None):
+    if sort_keys:
+        if sort_keys is True:
+            sort_keys = itemgetter(0)
+        elif not callable(sort_keys):
+            raise TypeError("sort_keys must be True, False or callable")
+    else:
+        sort_keys = None
+    convert = convert or default_converter
+    return b''.join(iterencoder(obj, Decimal, skip_illegal_keys, check_circular, sort_keys, convert, use_for_json))
 
-        If check_circular is true, then lists, dicts, and custom encoded
-        objects will be checked for circular references during encoding to
-        prevent an infinite recursion (which would cause an OverflowError).
-        Otherwise, no such check takes place.
 
-        If sort_keys is true, then the output of dictionaries will be
-        sorted by key; this is useful for regression tests to ensure
-        that JSON serializations can be compared on a day-to-day basis.
-
-        If specified, default is a function that gets called for objects
-        that can't otherwise be serialized.  It should return a JSON encodable
-        version of the object or raise a ``TypeError``.
-
-        If for_json is true (not the default), objects with a ``for_json()``
-        method will use the return value of that method for encoding as JSON
-        instead of the object.
-
-        """
-
-        self.skipkeys = skipkeys
-        self.check_circular = check_circular
-        if sort_keys:
-            if sort_keys is True:
-                sort_keys = itemgetter(0)
-            elif not callable(sort_keys):
-                raise TypeError("sort_keys must be True, False or callable")
-        else:
-            sort_keys = None
-        self.sort_keys = sort_keys
-        self.for_json = for_json
-        if default is not None:
-            self.default = default
-        self.encoder = make_encoder(
-            check_circular, self.default, self.sort_keys,
-            self.skipkeys, self.for_json,
-            Decimal)
-
-    def default(self, o):
-        """Implement this method in a subclass such that it returns
-        a serializable object for ``o``, or calls the base implementation
-        (to raise a ``TypeError``).
-
-        For example, to support arbitrary iterators, you could
-        implement default like this::
-
-            def default(self, o):
-                try:
-                    iterable = iter(o)
-                except TypeError:
-                    pass
-                else:
-                    return list(iterable)
-                return PBJSONEncoder.default(self, o)
-
-        """
-        raise TypeError(repr(o) + " is not JSON serializable")
-
-    def encode(self, o):
-        """Return a BinaryJSON representation of a Python data structure.
-
-        >>> from pbjson.encoder import PBJSONEncoder
-        >>> PBJSONEncoder().encode({"foo": ["bar", "baz"]})
-        '{"foo": ["bar", "baz"]}'
-
-        """
-        return b''.join(self.encoder(o))
-
-    def iterencode(self, o):
-        """Encode the given object and yield each string
-        representation as available.
-
-        For example::
-
-            for chunk in PBJSONEncoder().iterencode(bigobject):
-                mysocket.write(chunk)
-
-        """
-        return self.encoder(o)
+def iterencode(obj, skip_illegal_keys=True, check_circular=True, sort_keys=None, convert=default_converter, use_for_json=None):
+    if sort_keys:
+        if sort_keys is True:
+            sort_keys = itemgetter(0)
+        elif not callable(sort_keys):
+            raise TypeError("sort_keys must be True, False or callable")
+    else:
+        sort_keys = None
+    convert = convert or default_converter
+    for i in iterencoder(obj, Decimal, skip_illegal_keys, check_circular, sort_keys, convert, use_for_json):
+        yield i
 
 
 # noinspection PyShadowingBuiltins
-def py_make_encoder(check_circular, _default,
-                    _sort_keys, _skipkeys, _for_json,
+def py_iterencoder(obj, Decimal, skip_illegal_keys, check_circular, sort_keys, convert, use_for_json,
                     ## HACK: hand-optimized bytecode; turn globals into locals
-                    Decimal=Decimal,
                     _PY3=PY3,
                     ValueError=ValueError,
                     string_types=string_types,
@@ -211,14 +132,14 @@ def py_make_encoder(check_circular, _default,
             iteritems = dct.items()
         else:
             iteritems = dct.iteritems()
-        if _sort_keys:
+        if sort_keys:
             items = []
             for k, v in dct.items():
                 if not isinstance(k, string_types):
                     if k is None:
                         continue
                 items.append((k, v))
-            items.sort(key=_sort_keys)
+            items.sort(key=sort_keys)
         else:
             items = iteritems
         for key, value in items:
@@ -321,7 +242,7 @@ def py_make_encoder(check_circular, _default,
                 encoded = b''.join(encoded)
                 yield encode_type_and_content(FLOAT, encoded)
         else:
-            for_json = _for_json and getattr(o, 'for_json', None)
+            for_json = use_for_json and getattr(o, 'for_json', None)
             if for_json and callable(for_json):
                 for chunk in _iterencode(for_json()):
                     yield chunk
@@ -361,19 +282,14 @@ def py_make_encoder(check_circular, _default,
                         if markerid in markers:
                             raise ValueError("Circular reference detected")
                         markers[markerid] = o
-                    o = _default(o)
+                    o = convert(o)
                     for chunk in _iterencode(o):
                         yield chunk
                     if check_circular:
                         # noinspection PyUnboundLocalVariable
                         del markers[markerid]
 
-    def _start_encode(o):
-        key_cache.clear()
-        if markers:
-            markers.clear()
-        return _iterencode(o)
+    return _iterencode(obj)
 
-    return _start_encode
-
-make_encoder = c_make_encoder or py_make_encoder
+c_iterencoder = _import_speedups()
+iterencoder = c_iterencoder or py_iterencoder

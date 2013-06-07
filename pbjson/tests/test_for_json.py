@@ -28,12 +28,12 @@ class ListForJson(list):
 
 
 class TestForJson(TestCase):
-    def assertRoundTrip(self, obj, other, for_json=True):
-        if for_json is None:
+    def assertRoundTrip(self, obj, other, use_for_json=True):
+        if use_for_json is None:
             # None will use the default
             s = json.dumps(obj)
         else:
-            s = json.dumps(obj, for_json=for_json)
+            s = json.dumps(obj, use_for_json=use_for_json)
         self.assertEqual(
             json.loads(s),
             other)
@@ -79,22 +79,22 @@ class TestForJson(TestCase):
             ListForJson(['l']).for_json())
 
     def test_for_json_ignored_if_not_true_with_dict_subclass(self):
-        for for_json in (None, False):
+        for use_for_json in (None, False):
             self.assertRoundTrip(
                 DictForJson(a=1),
                 {'a': 1},
-                for_json=for_json)
+                use_for_json=use_for_json)
 
     def test_for_json_ignored_if_not_true_with_list_subclass(self):
-        for for_json in (None, False):
+        for use_for_json in (None, False):
             self.assertRoundTrip(
                 ListForJson(['l']),
                 ['l'],
-                for_json=for_json)
+                use_for_json=use_for_json)
 
     def test_raises_typeerror_if_for_json_not_true_with_object(self):
         self.assertRaises(TypeError, json.dumps, ForJson())
-        self.assertRaises(TypeError, json.dumps, ForJson(), for_json=False)
+        self.assertRaises(TypeError, json.dumps, ForJson(), use_for_json=False)
 
 if __name__ == '__main__':
     main()

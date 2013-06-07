@@ -62,11 +62,7 @@ Specializing JSON object encoding::
     ...         return [obj.real, obj.imag]
     ...     raise TypeError(repr(o) + " is not JSON serializable")
     ...
-    >>> pbjson.dumps(2 + 1j, default=encode_complex)
-    '[2.0, 1.0]'
-    >>> pbjson.PBJSONEncoder(default=encode_complex).encode(2 + 1j)
-    '[2.0, 1.0]'
-    >>> ''.join(pbjson.PBJSONEncoder(default=encode_complex).iterencode(2 + 1j))
+    >>> pbjson.dumps(2 + 1j, converter=encode_complex)
     '[2.0, 1.0]'
 
 
@@ -83,7 +79,7 @@ from __future__ import absolute_import
 __version__ = '1.0.0'
 __all__ = [
     'dump', 'dumps', 'load', 'loads',
-    'PBJSONDecoder', 'PBJSONDecodeError', 'PBJSONEncoder',
+    'PBJSONDecodeError',
 ]
 
 __author__ = 'Scott Maxwell <scott@codecobblers.com>'
@@ -91,10 +87,8 @@ __author__ = 'Scott Maxwell <scott@codecobblers.com>'
 from . import decoder
 from . import encoder
 
-_default_encoder = encoder.PBJSONEncoder()
 
-
-def dump(obj, fp, skipkeys=False, check_circular=True, default=None, sort_keys=False, for_json=False):
+def dump(obj, fp, skip_illegal_keys=False, check_circular=True, sort_keys=False, convert=None, use_for_json=False):
     """Serialize ``obj`` as a Packed Binary JSON stream to ``fp`` (a
     ``.write()``-supporting file-like object).
 
@@ -119,17 +113,11 @@ def dump(obj, fp, skipkeys=False, check_circular=True, default=None, sort_keys=F
 
     """
     # cached encoder
-    if not skipkeys and check_circular and default is None and not for_json:
-        iterable = _default_encoder.iterencode(obj)
-    else:
-        iterable = encoder.PBJSONEncoder(skipkeys=skipkeys, check_circular=check_circular, default=default, sort_keys=sort_keys, for_json=for_json).iterencode(obj)
-    # could accelerate with writelines in some versions of Python, at
-    # a debuggability cost
-    for chunk in iterable:
+    for chunk in encoder.iterencode(obj, skip_illegal_keys, check_circular, sort_keys, convert, use_for_json):
         fp.write(chunk)
 
 
-def dumps(obj, skipkeys=False, check_circular=True, default=None, sort_keys=False, for_json=False):
+def dumps(obj, skip_illegal_keys=False, check_circular=True, sort_keys=False, convert=None, use_for_json=False):
     """Serialize ``obj`` to a Packed Binary JSON formatted binary string.
 
     If ``skipkeys`` is false then ``dict`` keys that are not basic types
@@ -153,9 +141,7 @@ def dumps(obj, skipkeys=False, check_circular=True, default=None, sort_keys=Fals
 
     """
     # cached encoder
-    if not skipkeys and check_circular and default is None and not sort_keys and not for_json:
-        return _default_encoder.encode(obj)
-    return encoder.PBJSONEncoder(skipkeys=skipkeys, check_circular=check_circular, default=default, sort_keys=sort_keys, for_json=for_json).encode(obj)
+    return encoder.encode(obj, skip_illegal_keys=skip_illegal_keys, check_circular=check_circular, sort_keys=sort_keys, convert=convert, use_for_json=use_for_json)
 
 
 def load(fp, document_class=None, float_class=None):
@@ -187,19 +173,21 @@ def loads(s, document_class=None, float_class=None):
     return decoder.decode(s, document_class, float_class)
 
 
-def _has_speedups():
-    return bool(decoder.decode is decoder.c_decoder or encoder.make_encoder is encoder.c_make_encoder)
+def _has_encoder_speedups():
+    return bool(encoder.iterencoder is encoder.c_iterencoder)
+
+
+def _has_decoder_speedups():
+    return bool(decoder.decode is decoder.c_decoder)
 
 
 def _toggle_speedups(enabled):
     if enabled:
-        encoder.make_encoder = encoder.c_make_encoder or encoder.py_make_encoder
+        encoder.iterencoder = encoder.c_iterencoder or encoder.py_iterencoder
         decoder.decode = decoder.c_decoder or decoder.py_decoder
     else:
-        encoder.make_encoder = encoder.py_make_encoder
+        encoder.iterencoder = encoder.py_iterencoder
         decoder.decode = decoder.py_decoder
-    global _default_encoder
-    _default_encoder = encoder.PBJSONEncoder()
 
 
 def simple_first(kv):
