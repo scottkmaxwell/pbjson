@@ -1192,12 +1192,30 @@ encode_key(PyEncoder *rval, PyObject *obj)
 {
     PyObject *encoded = NULL;
     PyObject *value = NULL;
+    const char* str = NULL;
+    Py_ssize_t len = 0;
     if (PyUnicode_Check(obj))
     {
+#if PY_VERSION_HEX >= 0x03030000
+        if (!PyUnicode_READY(obj) && PyUnicode_KIND(obj) == PyUnicode_1BYTE_KIND) {
+            str = (const char*)PyUnicode_DATA(obj);
+            len = PyUnicode_GET_LENGTH(obj);
+            Py_INCREF(obj);
+            encoded = obj;
+        }
+        else {
+            PyErr_Clear();
+            encoded = PyUnicode_AsUTF8String(obj);
+            if (!encoded) {
+                return -1;
+            }
+        }
+#else
         encoded = PyUnicode_AsUTF8String(obj);
         if (!encoded) {
             return -1;
         }
+#endif
     }
 #if PY_MAJOR_VERSION < 3
     else if (PyString_Check(obj))
@@ -1209,13 +1227,16 @@ encode_key(PyEncoder *rval, PyObject *obj)
     else {
         return -1;
     }
-    int len = PyString_GET_SIZE(encoded);
+    if (!str) {
+        str = PyString_AS_STRING(encoded);
+        len = PyString_GET_SIZE(encoded);
+    }
     unsigned char clen = (unsigned char)len;
     if (len > 127 || JSON_Accu_Accumulate(rval, &clen, 1)) {
         Py_DECREF(encoded);
         return -1;
     }
-    int ret = JSON_Accu_Accumulate(rval, (unsigned char*)PyString_AS_STRING(encoded), PyString_GET_SIZE(encoded));
+    int ret = JSON_Accu_Accumulate(rval, (unsigned char*)str, len);
     if (rval->key_memo) {
         len = PyDict_Size(rval->key_memo);
     }
@@ -1274,10 +1295,25 @@ encode_one(PyEncoder *encoder, PyObject *obj)
         }
         else if (PyUnicode_Check(obj))
         {
+#if PY_VERSION_HEX >= 0x03030000
+            if (!PyUnicode_READY(obj) && PyUnicode_KIND(obj) == PyUnicode_1BYTE_KIND) {
+                rv = encode_type_and_content(encoder, Enc_STRING, (unsigned char*)PyUnicode_DATA(obj), PyUnicode_GET_LENGTH(obj));
+            }
+            else {
+                PyErr_Clear();
+                PyObject *encoded = PyUnicode_AsUTF8String(obj);
+                if (encoded != NULL) {
+                    rv = encode_type_and_content(encoder, Enc_STRING, (unsigned char*)PyString_AS_STRING(encoded), PyString_GET_SIZE(encoded));
+                    Py_DECREF(encoded);
+                }
+            }
+#else
             PyObject *encoded = PyUnicode_AsUTF8String(obj);
             if (encoded != NULL) {
                 rv = encode_type_and_content(encoder, Enc_STRING, (unsigned char*)PyString_AS_STRING(encoded), PyString_GET_SIZE(encoded));
+                Py_DECREF(encoded);
             }
+#endif
         }
 #if PY_MAJOR_VERSION >= 3
         else if (PyBytes_Check(obj))
