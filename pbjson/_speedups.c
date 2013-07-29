@@ -1649,7 +1649,7 @@ static PyObject *
 py_encode(PyObject* self UNUSED, PyObject *args, PyObject *kwds)
 {
     static char *kwlist[] = {"object", "decimal", "skip_illegal_keys", "check_circular", "sort_keys", "convert", "use_for_json", NULL};
-    
+
     PyObject *obj=NULL;
     PyObject *sort_keys=NULL;
     PyEncoder encoder;
@@ -1679,11 +1679,11 @@ py_encode(PyObject* self UNUSED, PyObject *args, PyObject *kwds)
 static PyMethodDef speedups_methods[] = {
     {"decode",
         (PyCFunction)py_decode,
-        METH_VARARGS,
+        METH_VARARGS | METH_KEYWORDS,
         pydoc_decode},
     {"encode",
         (PyCFunction)py_encode,
-        METH_VARARGS,
+        METH_VARARGS | METH_KEYWORDS,
         pydoc_encode},
     {NULL, NULL, 0, NULL}
 };

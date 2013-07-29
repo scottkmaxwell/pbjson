@@ -8,7 +8,7 @@ from distutils.errors import CCompilerError, DistutilsExecError, \
     DistutilsPlatformError
 
 IS_PYPY = hasattr(sys, 'pypy_translation_info')
-VERSION = '1.05'
+VERSION = '1.06'
 DESCRIPTION = "Packed Binary JSON encoder/decoder for Python"
 
 with open('README.rst', 'r') as f:
@@ -105,6 +105,7 @@ def run_setup(with_binary):
         license="MIT License",
         packages=['pbjson', 'pbjson.tests'],
         platforms=['any'],
+        zip_safe=False,
         **kw)
 
 try:
