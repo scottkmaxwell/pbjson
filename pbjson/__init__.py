@@ -88,11 +88,11 @@ from . import decoder
 from . import encoder
 
 
-def dump(obj, fp, skip_illegal_keys=False, check_circular=True, sort_keys=False, convert=None, use_for_json=False):
+def dump(obj, fp, skip_illegal_keys=False, check_circular=True, sort_keys=False, custom=None, convert=None, use_for_json=False):
     """Serialize ``obj`` as a Packed Binary JSON stream to ``fp`` (a
     ``.write()``-supporting file-like object).
 
-    If *skipkeys* is true then ``dict`` keys that are not basic types
+    If *skip_illegal_keys* is true then ``dict`` keys that are not basic types
     (``str``, ``unicode``, ``int``, ``long``, ``float``, ``bool``, ``None``)
     will be skipped instead of raising a ``TypeError``.
 
@@ -100,12 +100,18 @@ def dump(obj, fp, skip_illegal_keys=False, check_circular=True, sort_keys=False,
     for container types will be skipped and a circular reference will
     result in an ``OverflowError`` (or worse).
 
-    *default(obj)* is a function that should return a serializable version
-    of obj or raise ``TypeError``. The default simply raises ``TypeError``.
-
     If *sort_keys* is true (default: ``False``), the output of dictionaries
     will be sorted by item. *sort_keys* can also be a callable to sort by
     key and/or value.
+
+    *custom* can be an sequence of tuples where each tuple is a type,
+    function pair. The function should take an object and return a
+    serializable version of the object. A 'custom' token will be output
+    to the stream so that the decoder knows the result needs special
+    handling.
+
+    *convert(obj)* is a function that should return a serializable version
+    of obj or raise ``TypeError``. The default simply raises ``TypeError``.
 
     If *for_json* is true (default: ``False``), objects with a ``for_json()``
     method will use the return value of that method for encoding as JSON
@@ -113,27 +119,33 @@ def dump(obj, fp, skip_illegal_keys=False, check_circular=True, sort_keys=False,
 
     """
     # cached encoder
-    for chunk in encoder.iterencode(obj, skip_illegal_keys, check_circular, sort_keys, convert, use_for_json):
+    for chunk in encoder.iterencode(obj, skip_illegal_keys, check_circular, sort_keys, custom, convert, use_for_json):
         fp.write(chunk)
 
 
-def dumps(obj, skip_illegal_keys=False, check_circular=True, sort_keys=False, convert=None, use_for_json=False):
+def dumps(obj, skip_illegal_keys=False, check_circular=True, sort_keys=False, custom=None, convert=None, use_for_json=False):
     """Serialize ``obj`` to a Packed Binary JSON formatted binary string.
 
-    If ``skipkeys`` is false then ``dict`` keys that are not basic types
+    If *skip_illegal_keys* is false then ``dict`` keys that are not basic types
     (``str``, ``unicode``, ``int``, ``long``, ``float``, ``bool``, ``None``)
     will be skipped instead of raising a ``TypeError``.
 
-    If ``check_circular`` is false, then the circular reference check
+    If *check_circular* is false, then the circular reference check
     for container types will be skipped and a circular reference will
     result in an ``OverflowError`` (or worse).
-
-    ``default(obj)`` is a function that should return a serializable version
-    of obj or raise TypeError. The default simply raises TypeError.
 
     If *sort_keys* is true (default: ``False``), the output of dictionaries
     will be sorted by item. *sort_keys* can also be a callable to sort by
     key and/or value.
+
+    *custom* can be an sequence of tuples where each tuple is a type,
+    function pair. The function should take an object and return a
+    serializable version of the object. A 'custom' token will be output
+    to the stream so that the decoder knows the result needs special
+    handling.
+
+    *convert(obj)* is a function that should return a serializable version
+    of obj or raise TypeError. The default simply raises TypeError.
 
     If *for_json* is true (default: ``False``), objects with a ``for_json()``
     method will use the return value of that method for encoding as JSON
@@ -141,10 +153,10 @@ def dumps(obj, skip_illegal_keys=False, check_circular=True, sort_keys=False, co
 
     """
     # cached encoder
-    return encoder.encode(obj, skip_illegal_keys=skip_illegal_keys, check_circular=check_circular, sort_keys=sort_keys, convert=convert, use_for_json=use_for_json)
+    return encoder.encode(obj, skip_illegal_keys=skip_illegal_keys, check_circular=check_circular, sort_keys=sort_keys, custom=custom, convert=convert, use_for_json=use_for_json)
 
 
-def load(fp, document_class=None, float_class=None):
+def load(fp, document_class=None, float_class=None, custom=None):
     """Deserialize ``fp`` (a ``.read()``-supporting file-like object containing
     a Packed Binary JSON document) to a Python object.
 
@@ -155,10 +167,10 @@ def load(fp, document_class=None, float_class=None):
         (e.g. :class:`decimal.Decimal`). The class will be passed a string
          representing the float.
     """
-    return decoder.decode(fp.read(), document_class, float_class)
+    return decoder.decode(fp.read(), document_class, float_class, custom)
 
 
-def loads(s, document_class=None, float_class=None):
+def loads(s, document_class=None, float_class=None, custom=None):
     """Deserialize ``s`` (a binary string containing a Packed
        Binary JSON document) to a Python object.
 
@@ -170,7 +182,7 @@ def loads(s, document_class=None, float_class=None):
          representing the float.
 
     """
-    return decoder.decode(s, document_class, float_class)
+    return decoder.decode(s, document_class, float_class, custom)
 
 
 def _has_encoder_speedups():

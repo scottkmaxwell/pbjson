@@ -41,20 +41,19 @@ class TestMissingSpeedups(unittest.TestCase):
 def all_tests_suite():
     suite = unittest.TestLoader().loadTestsFromNames([
         'pbjson.tests.test_check_circular',
+        'pbjson.tests.test_custom',
+        # 'pbjson.tests.test_decimal',
         'pbjson.tests.test_decode',
         'pbjson.tests.test_default',
-        # 'pbjson.tests.test_dump',
         'pbjson.tests.test_encode',
-        # 'pbjson.tests.test_errors',
-        # 'pbjson.tests.test_fail',
         'pbjson.tests.test_float',
+        'pbjson.tests.test_for_json',
+        'pbjson.tests.test_mapping',
         'pbjson.tests.test_pass1',
         'pbjson.tests.test_pass2',
         # 'pbjson.tests.test_recursion',
         'pbjson.tests.test_speedups',
-        # 'pbjson.tests.test_decimal',
         'pbjson.tests.test_tuple',
-        'pbjson.tests.test_for_json',
     ])
     # suite = additional_tests(suite)
     return OptionalExtensionTestSuite([suite])

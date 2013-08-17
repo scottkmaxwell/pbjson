@@ -88,6 +88,11 @@ def _decode_dict(context, document_class, keys, data, length=-1):
     return result, data
 
 
+def _decode_custom(context, data, custom):
+    result, data = _decode_one(context, data)
+    return custom(result), data
+
+
 def _decode_one(context, data):
     """Return the Python representation of ``s`` (a ``bytes`` instance containing a Packed Binary JSON document)"""
     if data:
@@ -109,7 +114,7 @@ def _decode_one(context, data):
         return context[token](context, data[:length]), data[length:]
 
 
-def py_decoder(data, document_class=None, float_class=None):
+def py_decoder(data, document_class=None, float_class=None, custom=None):
     if isinstance(data, memoryview):
         data = data.tobytes()
     float_class = float_class or float
@@ -130,6 +135,7 @@ def py_decoder(data, document_class=None, float_class=None):
         BINARY: lambda context, data: data,
         LIST: _decode_list,
         DICT: lambda context, data, length: _decode_dict(context, document_class, keys, data, length),
+        CUSTOM: lambda context, data: _decode_custom(context, data, custom),
     }
     return _decode_one(context, data)[0]
 

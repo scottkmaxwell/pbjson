@@ -19,6 +19,7 @@
 #define Enc_NEGINF 4
 #define Enc_NAN 5
 #define Enc_TERMINATED_LIST 0xc
+#define Enc_CUSTOM 0xe
 #define Enc_TERMINATOR 0xf
 #define Enc_INT 0x20
 #define Enc_NEGINT 0x40
@@ -86,7 +87,9 @@ typedef int Py_ssize_t;
 
 typedef struct _PyEncoder {
     PyObject *defaultfn;
+    PyObject *custom;
     PyObject *Decimal;
+    PyObject *Mapping;
 
     PyObject *item_sort_kw;
     PyObject *markers;      /* Dict for tracking circular references */
@@ -99,12 +102,14 @@ typedef struct _PyEncoder {
     int check_circular;
     int skipkeys;
     int for_json;
+    int single_custom;
 
 } PyEncoder;
 
 typedef struct _PyDecoder {
     PyObject *document_class;
     PyObject *float_class;
+    PyObject *custom;
     PyObject *keys;
     const unsigned char* data;
     int len;
@@ -504,10 +509,10 @@ decode_dict(PyDecoder *decoder, int length)
     return result;
 }
 
-
 static PyObject *
 decode_one(PyDecoder *decoder)
 {
+    PyObject *temp=NULL;
     if (decoder->len) {
         unsigned char first_byte = *decoder->data++;
         unsigned token = first_byte & 0xe0;
@@ -532,8 +537,20 @@ decode_one(PyDecoder *decoder)
 
                 case Enc_TERMINATED_LIST:
                     return decode_list(decoder, -1);
-                    
+
+                case Enc_CUSTOM:
+                    temp = decode_one(decoder);
+                    if (decoder->custom) {
+                        PyObject *newobj = PyObject_CallFunctionObjArgs(decoder->custom, temp, NULL);
+                        Py_CLEAR(temp);
+                        if (newobj) {
+                            temp = newobj;
+                        }
+                    }
+                    return temp;
+
                 default:
+                    PyErr_SetString(PyExc_ValueError, "Invalid token in PBJSON string");
                     break;
             }
         }
@@ -605,11 +622,11 @@ PyDoc_STRVAR(pydoc_decode,
 static PyObject *
 py_decode(PyObject* self UNUSED, PyObject *args, PyObject *kwds)
 {
-    static char *kwlist[] = {"data", "document_class", "float_class", NULL};
+    static char *kwlist[] = {"data", "document_class", "float_class", "custom", NULL};
 
     PyDecoder decoder;
     Py_buffer buf;
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "y*OO:decode", kwlist, &buf, &decoder.document_class, &decoder.float_class))
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "y*OOO:decode", kwlist, &buf, &decoder.document_class, &decoder.float_class, &decoder.custom))
         return NULL;
     decoder.data = (unsigned char*)buf.buf;
     decoder.len = buf.len;
@@ -1290,7 +1307,7 @@ encode_one(PyEncoder *encoder, PyObject *obj)
     int rv = -1;
     do {
         if (obj == Py_None || obj == Py_True || obj == Py_False) {
-            unsigned char c = obj == Py_False ? 0 : obj == Py_True ? 1 : 2;
+            unsigned char c = obj == Py_False ? Enc_FALSE : obj == Py_True ? Enc_TRUE : Enc_NULL;
             rv = JSON_Accu_Accumulate(encoder, &c, 1);
         }
         else if (PyUnicode_Check(obj))
@@ -1335,74 +1352,128 @@ encode_one(PyEncoder *encoder, PyObject *obj)
         else if (PyFloat_Check(obj)) {
             rv = encode_float(encoder, obj);
         }
-        else if (encoder->for_json && _has_for_json_hook(obj)) {
-            PyObject *newobj;
-            if (Py_EnterRecursiveCall(" while encoding a JSON object"))
-                return rv;
-            newobj = PyObject_CallMethod(obj, "for_json", NULL);
-            if (newobj != NULL) {
-                rv = encode_one(encoder, newobj);
-                Py_DECREF(newobj);
-            }
-            Py_LeaveRecursiveCall();
-        }
         else if (encoder->Decimal && PyObject_TypeCheck(obj, (PyTypeObject *)encoder->Decimal)) {
             rv = encode_decimal(encoder, obj);
         }
-        else if (PyDict_Check(obj)) {
-            if (Py_EnterRecursiveCall(" while encoding a JSON object"))
-                return rv;
-            rv = encode_dict(encoder, obj);
-            Py_LeaveRecursiveCall();
-        }
-        else if (_is_namedtuple(obj)) {
-            PyObject *newobj;
-            if (Py_EnterRecursiveCall(" while encoding a JSON object"))
-                return rv;
-            newobj = PyObject_CallMethod(obj, "_asdict", NULL);
-            if (newobj != NULL) {
-                rv = encode_dict(encoder, newobj);
-                Py_DECREF(newobj);
-            }
-            Py_LeaveRecursiveCall();
-        }
-        else if (PyObject_Length(obj) >= 0) {
-            if (Py_EnterRecursiveCall(" while encoding a JSON object"))
-                return rv;
-            rv = encode_list(encoder, obj);
-            Py_LeaveRecursiveCall();
-        }
         else {
-            PyErr_Clear();
-            if (Py_EnterRecursiveCall(" while encoding a JSON object"))
-                return rv;
-            PyObject *iter = PyObject_GetIter(obj);
-            if (iter) {
-                rv = encode_terminated_list(encoder, iter);
-                Py_XDECREF(iter);
-            } else {
-                PyObject *ident = NULL;
-                PyObject *newobj;
-                if (encoder->check_circular && check_circular(encoder, obj, &ident)) {
-                    break;
+            if (encoder->custom) {
+                PyObject *callable=NULL;
+                if (encoder->single_custom) {
+                    if (PyObject_IsInstance(obj, PyTuple_GET_ITEM(encoder->custom, 0))) {
+                        callable = PyTuple_GET_ITEM(encoder->custom, 1);
+                    }
+                } else {
+                    PyObject *tuple;
+                    PyObject *iter = PyObject_GetIter(encoder->custom);
+                    if (iter == NULL)
+                        return -1;
+                    while ((tuple = PyIter_Next(iter)) && !callable && !PyErr_Occurred()) {
+                        if (!PyTuple_Check(tuple) || Py_SIZE(tuple) != 2) {
+                            PyErr_SetString(PyExc_ValueError, "Custom handlers must be a sequence of 2-tuples (type, function)");
+                        }
+                        else if (PyObject_IsInstance(obj, PyTuple_GET_ITEM(tuple, 0))) {
+                            callable = PyTuple_GET_ITEM(tuple, 1);
+                        }
+                        Py_CLEAR(tuple);
+                    }
+                    Py_CLEAR(iter);
                 }
-                PyErr_Clear();
-                newobj = PyObject_CallFunctionObjArgs(encoder->defaultfn, obj, NULL);
-                if (newobj) {
-                    rv = encode_one(encoder, newobj);
-                    Py_XDECREF(newobj);
-                }
-                if (rv) {
-                    rv = -1;
-                }
-                else if (ident != NULL) {
-                    if (PyDict_DelItem(encoder->markers, ident)) {
+                if (callable) {
+                    PyObject *ident = NULL;
+                    PyObject *newobj;
+                    if (encoder->check_circular && check_circular(encoder, obj, &ident)) {
+                        break;
+                    }
+                    PyErr_Clear();
+                    newobj = PyObject_CallFunctionObjArgs(callable, obj, NULL);
+                    if (newobj) {
+                        unsigned char c = Enc_CUSTOM;
+                        rv = JSON_Accu_Accumulate(encoder, &c, 1);
+                        rv = encode_one(encoder, newobj);
+                        Py_XDECREF(newobj);
+                    }
+                    if (rv) {
                         rv = -1;
                     }
+                    else if (ident != NULL) {
+                        if (PyDict_DelItem(encoder->markers, ident)) {
+                            rv = -1;
+                        }
+                    }
+                    Py_XDECREF(ident);
+                    break;
                 }
-                Py_XDECREF(ident);
+                if (PyErr_Occurred()) {
+                    rv = -1;
+                    break;
+                }
             }
-            Py_LeaveRecursiveCall();
+            if (encoder->for_json && _has_for_json_hook(obj)) {
+                PyObject *newobj;
+                if (Py_EnterRecursiveCall(" while encoding a JSON object"))
+                    return rv;
+                newobj = PyObject_CallMethod(obj, "for_json", NULL);
+                if (newobj != NULL) {
+                    rv = encode_one(encoder, newobj);
+                    Py_DECREF(newobj);
+                }
+                Py_LeaveRecursiveCall();
+            }
+            else if (PyObject_IsInstance(obj, encoder->Mapping)) {
+                if (Py_EnterRecursiveCall(" while encoding a JSON object"))
+                    return rv;
+                rv = encode_dict(encoder, obj);
+                Py_LeaveRecursiveCall();
+            }
+            else if (_is_namedtuple(obj)) {
+                PyObject *newobj;
+                if (Py_EnterRecursiveCall(" while encoding a JSON object"))
+                    return rv;
+                newobj = PyObject_CallMethod(obj, "_asdict", NULL);
+                if (newobj != NULL) {
+                    rv = encode_dict(encoder, newobj);
+                    Py_DECREF(newobj);
+                }
+                Py_LeaveRecursiveCall();
+            }
+            else if (PyObject_Length(obj) >= 0) {
+                if (Py_EnterRecursiveCall(" while encoding a JSON object"))
+                    return rv;
+                rv = encode_list(encoder, obj);
+                Py_LeaveRecursiveCall();
+            }
+            else {
+                PyErr_Clear();
+                if (Py_EnterRecursiveCall(" while encoding a JSON object"))
+                    return rv;
+                PyObject *iter = PyObject_GetIter(obj);
+                if (iter) {
+                    rv = encode_terminated_list(encoder, iter);
+                    Py_XDECREF(iter);
+                } else {
+                    PyObject *ident = NULL;
+                    PyObject *newobj;
+                    if (encoder->check_circular && check_circular(encoder, obj, &ident)) {
+                        break;
+                    }
+                    PyErr_Clear();
+                    newobj = PyObject_CallFunctionObjArgs(encoder->defaultfn, obj, NULL);
+                    if (newobj) {
+                        rv = encode_one(encoder, newobj);
+                        Py_XDECREF(newobj);
+                    }
+                    if (rv) {
+                        rv = -1;
+                    }
+                    else if (ident != NULL) {
+                        if (PyDict_DelItem(encoder->markers, ident)) {
+                            rv = -1;
+                        }
+                    }
+                    Py_XDECREF(ident);
+                }
+                Py_LeaveRecursiveCall();
+            }
         }
     } while (0);
     return rv;
@@ -1420,7 +1491,7 @@ encode_dict(PyEncoder *encoder, PyObject *dct)
     PyObject *encoded = NULL;
     Py_ssize_t idx;
 
-    int len = PyDict_Size(dct);
+    int len = PyMapping_Size(dct);
     if (encode_type_and_length(encoder, Enc_DICT, len)) {
         return -1;
     }
@@ -1632,7 +1703,7 @@ bail:
 
 
 PyDoc_STRVAR(pydoc_encode,
-             "encode(object, Decimal, skip_illegal_keys, check_circular, sort_keys, convert, use_for_json) -> object\n"
+             "encode(object, Decimal, Mapping, skip_illegal_keys, check_circular, sort_keys, convert, use_for_json) -> object\n"
              "\n"
              "Encode the object into a byte object."
              );
@@ -1648,16 +1719,21 @@ convert_to_bool(PyObject *o, int *value)
 static PyObject *
 py_encode(PyObject* self UNUSED, PyObject *args, PyObject *kwds)
 {
-    static char *kwlist[] = {"object", "decimal", "skip_illegal_keys", "check_circular", "sort_keys", "convert", "use_for_json", NULL};
+    static char *kwlist[] = {"object", "Decimal", "Mapping", "skip_illegal_keys", "check_circular", "sort_keys", "custom", "convert", "use_for_json", NULL};
 
     PyObject *obj=NULL;
     PyObject *sort_keys=NULL;
     PyEncoder encoder;
     memset(&encoder, 0, sizeof(encoder));
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|OO&O&OOO&:decode", kwlist, &obj, &encoder.Decimal, convert_to_bool, &encoder.skipkeys, convert_to_bool, &encoder.check_circular, &sort_keys, &encoder.defaultfn, convert_to_bool, &encoder.for_json))
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|OOO&O&OOOO&:encode", kwlist, &obj, &encoder.Decimal, &encoder.Mapping, convert_to_bool, &encoder.skipkeys, convert_to_bool, &encoder.check_circular, &sort_keys, &encoder.custom, &encoder.defaultfn, convert_to_bool, &encoder.for_json))
         return NULL;
     if (encoder.Decimal == Py_None || encoder.Decimal == (PyObject *)&PyFloat_Type) {
         encoder.Decimal = NULL;
+    }
+    if (encoder.custom == Py_None || (encoder.custom && PyObject_Length(encoder.custom) == 0)) {
+        encoder.custom = NULL;
+    } else {
+        encoder.single_custom = PyTuple_Check(encoder.custom) && Py_SIZE(encoder.custom) == 2 && PyType_Check(PyTuple_GET_ITEM(encoder.custom, 0));
     }
     if (sort_keys != Py_None) {
         encoder.item_sort_kw = PyDict_New();

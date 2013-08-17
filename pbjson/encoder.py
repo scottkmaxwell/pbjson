@@ -10,6 +10,7 @@ from decimal import Decimal
 from struct import pack
 from .compat import text_type, binary_type, string_types, integer_types, PY3
 from .tokens import *
+from collections import Mapping
 
 
 def _import_speedups():
@@ -44,7 +45,7 @@ def encode_type_and_content(data_type, content):
 
 def default_converter(o):
     """Implement this function such that it returns
-    a serializable object for ``o`` or calls raises a ``TypeError``.
+    a serializable object for ``o`` or raises a ``TypeError``.
 
     For example, to support arbitrary iterators, you could
     implement default like this::
@@ -62,7 +63,7 @@ def default_converter(o):
     raise TypeError(repr(o) + " is not PBJSON serializable")
 
 
-def encode(obj, skip_illegal_keys=True, check_circular=True, sort_keys=None, convert=default_converter, use_for_json=None):
+def encode(obj, skip_illegal_keys=True, check_circular=True, sort_keys=None, custom=None, convert=default_converter, use_for_json=None):
     if sort_keys:
         if sort_keys is True:
             sort_keys = itemgetter(0)
@@ -71,10 +72,10 @@ def encode(obj, skip_illegal_keys=True, check_circular=True, sort_keys=None, con
     else:
         sort_keys = None
     convert = convert or default_converter
-    return b''.join(iterencoder(obj, Decimal, skip_illegal_keys, check_circular, sort_keys, convert, use_for_json))
+    return b''.join(iterencoder(obj, Decimal, Mapping, skip_illegal_keys, check_circular, sort_keys, custom, convert, use_for_json))
 
 
-def iterencode(obj, skip_illegal_keys=True, check_circular=True, sort_keys=None, convert=default_converter, use_for_json=None):
+def iterencode(obj, skip_illegal_keys=True, check_circular=True, sort_keys=None, custom=None, convert=default_converter, use_for_json=None):
     if sort_keys:
         if sort_keys is True:
             sort_keys = itemgetter(0)
@@ -83,25 +84,26 @@ def iterencode(obj, skip_illegal_keys=True, check_circular=True, sort_keys=None,
     else:
         sort_keys = None
     convert = convert or default_converter
-    for i in iterencoder(obj, Decimal, skip_illegal_keys, check_circular, sort_keys, convert, use_for_json):
+    for i in iterencoder(obj, Decimal, Mapping, skip_illegal_keys, check_circular, sort_keys, custom, convert, use_for_json):
         yield i
 
 
 # noinspection PyShadowingBuiltins
-def py_iterencoder(obj, Decimal, skip_illegal_keys, check_circular, sort_keys, convert, use_for_json,
+def py_iterencoder(obj, Decimal, Mapping, skip_illegal_keys, check_circular, sort_keys, custom, convert, use_for_json,
                     ## HACK: hand-optimized bytecode; turn globals into locals
                     _PY3=PY3,
                     ValueError=ValueError,
                     string_types=string_types,
-                    dict=dict,
                     float=float,
                     id=id,
                     integer_types=integer_types,
                     isinstance=isinstance,
-                    list=list,
                     str=str):
     key_cache = {}
     markers = {} if check_circular else None
+    if custom and isinstance(custom[0], type):
+        custom = (custom, )
+    custom_types = tuple(c[0] for c in custom) if custom else None
 
     def _iterencode_list(lst):
         yield encode_type_and_length(LIST, len(lst))
@@ -241,21 +243,26 @@ def py_iterencoder(obj, Decimal, skip_illegal_keys, check_circular, sort_keys, c
                     encoded.append(pack('B', nibble | FltEnc_Decimal))
                 encoded = b''.join(encoded)
                 yield encode_type_and_content(FLOAT, encoded)
+        elif custom and isinstance(o, custom_types):
+            yield Enc_CUSTOM
+            for t in custom:
+                if isinstance(o, t[0]):
+                    o = t[1](o)
+                    for chunk in _iterencode(o):
+                        yield chunk
+                    break
         else:
             for_json = use_for_json and getattr(o, 'for_json', None)
             if for_json and callable(for_json):
                 for chunk in _iterencode(for_json()):
                     yield chunk
-            elif isinstance(o, list):
-                for chunk in _iterencode_list(o):
+            elif isinstance(o, Mapping):
+                for chunk in _iterencode_dict(o):
                     yield chunk
             else:
                 _asdict = isinstance(o, tuple) and getattr(o, '_asdict', None)
                 if _asdict and callable(_asdict):
                     for chunk in _iterencode_dict(_asdict()):
-                        yield chunk
-                elif isinstance(o, dict):
-                    for chunk in _iterencode_dict(o):
                         yield chunk
                 else:
                     try:
