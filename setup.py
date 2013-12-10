@@ -2,13 +2,17 @@
 from __future__ import with_statement
 
 import sys
-from distutils.core import setup, Extension, Command
-from distutils.command.build_ext import build_ext
+try:
+    from setuptools import setup, Extension, Command
+    from setuptools.command.build_ext import build_ext
+except ImportError:
+    from distutils.core import setup, Extension, Command
+    from distutils.command.build_ext import build_ext
 from distutils.errors import CCompilerError, DistutilsExecError, \
     DistutilsPlatformError
 
 IS_PYPY = hasattr(sys, 'pypy_translation_info')
-VERSION = '1.07'
+VERSION = '1.08'
 DESCRIPTION = "Packed Binary JSON encoder/decoder for Python"
 
 with open('README.rst', 'r') as f:
@@ -106,6 +110,10 @@ def run_setup(with_binary):
         packages=['pbjson', 'pbjson.tests'],
         platforms=['any'],
         zip_safe=False,
+          entry_points="""\
+          [console_scripts]
+          pbjson = pbjson.tool:main
+          """,
         **kw)
 
 try:

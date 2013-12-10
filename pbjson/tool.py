@@ -9,14 +9,14 @@ Usage::
     Expecting property name: line 1 column 2 (char 2)
 
 """
-from __future__ import with_statement
 import sys
 import json
 import pbjson
 from collections import OrderedDict
 
-
 def main():
+    outfile = None
+    indent = '    '
     if len(sys.argv) == 1:
         infile = sys.stdin
         outfile = sys.stdout
@@ -25,15 +25,18 @@ def main():
         outfile = sys.stdout
     elif len(sys.argv) == 3:
         infile = open(sys.argv[1], 'rb')
-        outfile = open(sys.argv[2], 'wb')
+        indent = None
     else:
         raise SystemExit(sys.argv[0] + " [infile [outfile]]")
     with infile:
         contents = infile.read()
         try:
             text = contents.decode()
-        except Exception as e:
+        except Exception:
             text = None
+        if not outfile:
+            # read from text and write to binary or vice-versa
+            outfile = open(sys.argv[2], 'wb' if text else 'w')
         if text:
             try:
                 obj = json.loads(text, object_pairs_hook=OrderedDict)
@@ -49,7 +52,7 @@ def main():
                 raise SystemExit(sys.exc_info()[1])
             else:
                 with outfile:
-                    json.dump(obj, outfile, sort_keys=True, indent='    ')
+                    json.dump(obj, outfile, sort_keys=True, indent=indent)
                     outfile.write('\n')
 
 
