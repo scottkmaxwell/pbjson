@@ -112,6 +112,7 @@ typedef struct _PyDecoder {
     PyObject *custom;
     PyObject *keys;
     const unsigned char* data;
+    const char* unicode_errors;
     int len;
 } PyDecoder;
 
@@ -381,7 +382,7 @@ decode_special_float(PyDecoder *decoder, unsigned char token)
 static PyObject *
 decode_string(PyDecoder *decoder, int length)
 {
-    PyObject *result = PyUnicode_FromStringAndSize((const char *)decoder->data, length);
+    PyObject *result = PyUnicode_DecodeUTF8((const char *)decoder->data, length, decoder->unicode_errors);
     decoder->data += length;
     decoder->len -= length;
     return result;
@@ -622,11 +623,11 @@ PyDoc_STRVAR(pydoc_decode,
 static PyObject *
 py_decode(PyObject* self UNUSED, PyObject *args, PyObject *kwds)
 {
-    static char *kwlist[] = {"data", "document_class", "float_class", "custom", NULL};
+    static char *kwlist[] = {"data", "document_class", "float_class", "custom", "unicode_errors", NULL};
 
     PyDecoder decoder;
     Py_buffer buf;
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "y*OOO:decode", kwlist, &buf, &decoder.document_class, &decoder.float_class, &decoder.custom))
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "y*OOOz:decode", kwlist, &buf, &decoder.document_class, &decoder.float_class, &decoder.custom, &decoder.unicode_errors))
         return NULL;
     decoder.data = (unsigned char*)buf.buf;
     decoder.len = buf.len;

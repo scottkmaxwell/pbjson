@@ -156,7 +156,7 @@ def dumps(obj, skip_illegal_keys=False, check_circular=True, sort_keys=False, cu
     return encoder.encode(obj, skip_illegal_keys=skip_illegal_keys, check_circular=check_circular, sort_keys=sort_keys, custom=custom, convert=convert, use_for_json=use_for_json)
 
 
-def load(fp, document_class=None, float_class=None, custom=None):
+def load(fp, document_class=None, float_class=None, custom=None, unicode_errors='strict'):
     """Deserialize ``fp`` (a ``.read()``-supporting file-like object containing
     a Packed Binary JSON document) to a Python object.
 
@@ -167,10 +167,10 @@ def load(fp, document_class=None, float_class=None, custom=None):
         (e.g. :class:`decimal.Decimal`). The class will be passed a string
          representing the float.
     """
-    return decoder.decode(fp.read(), document_class, float_class, custom)
+    return decoder.decode(fp.read(), document_class, float_class, custom, unicode_errors)
 
 
-def loads(s, document_class=None, float_class=None, custom=None):
+def loads(s, document_class=None, float_class=None, custom=None, unicode_errors='strict'):
     """Deserialize ``s`` (a binary string containing a Packed
        Binary JSON document) to a Python object.
 
@@ -182,7 +182,7 @@ def loads(s, document_class=None, float_class=None, custom=None):
          representing the float.
 
     """
-    return decoder.decode(s, document_class, float_class, custom)
+    return decoder.decode(s, document_class, float_class, custom, unicode_errors)
 
 
 def _has_encoder_speedups():

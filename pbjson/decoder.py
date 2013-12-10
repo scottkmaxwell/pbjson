@@ -114,7 +114,7 @@ def _decode_one(context, data):
         return context[token](context, data[:length]), data[length:]
 
 
-def py_decoder(data, document_class=None, float_class=None, custom=None):
+def py_decoder(data, document_class=None, float_class=None, custom=None, unicode_errors='strict'):
     if isinstance(data, memoryview):
         data = data.tobytes()
     float_class = float_class or float
@@ -131,7 +131,7 @@ def py_decoder(data, document_class=None, float_class=None, custom=None):
         INT: lambda context, data: _decode_int(data),
         NEGINT: lambda context, data: -_decode_int(data),
         FLOAT: lambda context, data: _decode_float(float_class, data),
-        STRING: lambda context, data: data.decode(),
+        STRING: lambda context, data: data.decode(errors=unicode_errors),
         BINARY: lambda context, data: data,
         LIST: _decode_list,
         DICT: lambda context, data, length: _decode_dict(context, document_class, keys, data, length),
