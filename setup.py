@@ -12,7 +12,7 @@ from distutils.errors import CCompilerError, DistutilsExecError, \
     DistutilsPlatformError
 
 IS_PYPY = hasattr(sys, 'pypy_translation_info')
-VERSION = '1.08'
+VERSION = '1.09'
 DESCRIPTION = "Packed Binary JSON encoder/decoder for Python"
 
 with open('README.rst', 'r') as f:
