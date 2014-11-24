@@ -1,6 +1,6 @@
 __author__ = 'Scott Maxwell'
 
-import pbjson as json
+import pbjson
 from unittest import TestCase, main
 from datetime import datetime
 import pickle
@@ -16,17 +16,17 @@ def decode_date_string(obj):
 
 class TestCustom(TestCase):
     def test_custom_datetime_with_encode(self):
-        self.assertEqual(b'\x0e\x90\x132000-03-17 11:21:45', json.dumps(datetime(2000, 3, 17, 11, 21, 45), custom=(datetime, encode_date_string)))
+        self.assertEqual(b'\x0e\x90\x132000-03-17 11:21:45', pbjson.dumps(datetime(2000, 3, 17, 11, 21, 45), custom=(datetime, encode_date_string)))
 
     def test_custom_datetime_with_decode(self):
         a = datetime(2000, 3, 17, 11, 21, 45)
-        p = json.dumps(a, custom=((datetime, encode_date_string),))
-        self.assertEqual(a, json.loads(p, custom=decode_date_string))
+        p = pbjson.dumps(a, custom=((datetime, encode_date_string),))
+        self.assertEqual(a, pbjson.loads(p, custom=decode_date_string))
 
     def test_custom_datetime_with_pickle(self):
         a = datetime(2000, 3, 17, 11, 21, 45)
-        p = json.dumps(a, custom=((datetime, pickle.dumps),))
-        self.assertEqual(a, json.loads(p, custom=pickle.loads))
+        p = pbjson.dumps(a, custom=((datetime, pickle.dumps),))
+        self.assertEqual(a, pbjson.loads(p, custom=pickle.loads))
 
 
 if __name__ == '__main__':

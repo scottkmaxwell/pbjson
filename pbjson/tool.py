@@ -10,50 +10,57 @@ Usage::
 
 """
 import sys
-import json
+try:
+    # noinspection PyPackageRequirements
+    import simplejson as json
+    does_unicode = True
+except ImportError:
+    import json
+    does_unicode = False
 import pbjson
+import argparse
+import pprint
 from collections import OrderedDict
 
+
 def main():
-    outfile = None
-    indent = '    '
-    if len(sys.argv) == 1:
-        infile = sys.stdin
-        outfile = sys.stdout
-    elif len(sys.argv) == 2:
-        infile = open(sys.argv[1], 'rb')
-        outfile = sys.stdout
-    elif len(sys.argv) == 3:
-        infile = open(sys.argv[1], 'rb')
-        indent = None
-    else:
-        raise SystemExit(sys.argv[0] + " [infile [outfile]]")
-    with infile:
-        contents = infile.read()
+    parser = argparse.ArgumentParser(
+        description='Convert between pbjson and json',
+        epilog='If converting a PBJSON file with binary elements, you may need to use `--repr` since JSON cannot handle binary data.')
+    parser.add_argument('-r', '--repr', action='store_true', help='instead of converting to JSON, just output the `repr` of the object')
+    parser.add_argument('-p', '--pretty', action='store_true', help='make it nice for humans')
+    parser.add_argument('infile', nargs='?', type=argparse.FileType('rb'), default=sys.stdin, help='filename to convert from or to pbjson (default: stdin)')
+    parser.add_argument('outfile', nargs='?', type=argparse.FileType('wb'), default=sys.stdout, help='filename to write the converted file to (default: stdout)')
+    args = parser.parse_args()
+
+    contents = args.infile.read()
+    try:
+        text = contents.decode()
+    except Exception:
+        text = None
+
+    if text:
         try:
-            text = contents.decode()
-        except Exception:
-            text = None
-        if not outfile:
-            # read from text and write to binary or vice-versa
-            outfile = open(sys.argv[2], 'wb' if text else 'w')
-        if text:
-            try:
-                obj = json.loads(text, object_pairs_hook=OrderedDict)
-            except ValueError:
-                raise SystemExit(sys.exc_info()[1])
-            else:
-                with outfile:
-                    pbjson.dump(obj, outfile)
+            obj = json.loads(text, object_pairs_hook=OrderedDict)
+        except ValueError:
+            raise SystemExit(sys.exc_info()[1])
         else:
-            try:
-                obj = pbjson.loads(contents, document_class=OrderedDict)
-            except ValueError:
-                raise SystemExit(sys.exc_info()[1])
-            else:
-                with outfile:
-                    json.dump(obj, outfile, sort_keys=True, indent=indent)
-                    outfile.write('\n')
+            pbjson.dump(obj, args.outfile)
+    else:
+        try:
+            obj = pbjson.loads(contents, document_class=OrderedDict)
+        except ValueError:
+            raise SystemExit(sys.exc_info()[1])
+        if args.repr:
+            j = pprint.pformat(obj, indent=1) if args.pretty else repr(obj)
+        else:
+            kw = {'ensure_ascii': False} if does_unicode else {}
+            j = json.dumps(obj, sort_keys=True, indent=4 if args.pretty else None, **kw)
+        if args.outfile == sys.stdout:
+            j += '\n'
+        else:
+            j = j.encode()
+        args.outfile.write(j)
 
 
 if __name__ == '__main__':

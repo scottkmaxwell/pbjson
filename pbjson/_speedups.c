@@ -615,7 +615,7 @@ decode_one(PyDecoder *decoder)
 }
 
 PyDoc_STRVAR(pydoc_decode,
-             "decode(bytes, document_class, float_class) -> object\n"
+             "decode(bytes, document_class, float_class, custom, unicode_errors) -> object\n"
              "\n"
              "Decode the byte object into an object."
              );
@@ -1214,26 +1214,10 @@ encode_key(PyEncoder *rval, PyObject *obj)
     Py_ssize_t len = 0;
     if (PyUnicode_Check(obj))
     {
-#if PY_VERSION_HEX >= 0x03030000
-        if (!PyUnicode_READY(obj) && PyUnicode_KIND(obj) == PyUnicode_1BYTE_KIND) {
-            str = (const char*)PyUnicode_DATA(obj);
-            len = PyUnicode_GET_LENGTH(obj);
-            Py_INCREF(obj);
-            encoded = obj;
-        }
-        else {
-            PyErr_Clear();
-            encoded = PyUnicode_AsUTF8String(obj);
-            if (!encoded) {
-                return -1;
-            }
-        }
-#else
         encoded = PyUnicode_AsUTF8String(obj);
         if (!encoded) {
             return -1;
         }
-#endif
     }
 #if PY_MAJOR_VERSION < 3
     else if (PyString_Check(obj))
@@ -1313,25 +1297,11 @@ encode_one(PyEncoder *encoder, PyObject *obj)
         }
         else if (PyUnicode_Check(obj))
         {
-#if PY_VERSION_HEX >= 0x03030000
-            if (!PyUnicode_READY(obj) && PyUnicode_KIND(obj) == PyUnicode_1BYTE_KIND) {
-                rv = encode_type_and_content(encoder, Enc_STRING, (unsigned char*)PyUnicode_DATA(obj), PyUnicode_GET_LENGTH(obj));
-            }
-            else {
-                PyErr_Clear();
-                PyObject *encoded = PyUnicode_AsUTF8String(obj);
-                if (encoded != NULL) {
-                    rv = encode_type_and_content(encoder, Enc_STRING, (unsigned char*)PyString_AS_STRING(encoded), PyString_GET_SIZE(encoded));
-                    Py_DECREF(encoded);
-                }
-            }
-#else
             PyObject *encoded = PyUnicode_AsUTF8String(obj);
             if (encoded != NULL) {
                 rv = encode_type_and_content(encoder, Enc_STRING, (unsigned char*)PyString_AS_STRING(encoded), PyString_GET_SIZE(encoded));
                 Py_DECREF(encoded);
             }
-#endif
         }
 #if PY_MAJOR_VERSION >= 3
         else if (PyBytes_Check(obj))

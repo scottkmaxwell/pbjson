@@ -1,6 +1,6 @@
 from unittest import TestCase, main
 
-import pbjson as json
+import pbjson
 
 # from http://json.org/JSON_checker/test/pass1.json
 JSON = [
@@ -65,8 +65,8 @@ JSON = [
 class TestPass1(TestCase):
     def test_parse(self):
         # test in/out equivalence and parsing
-        encoded = json.dumps(JSON, skip_illegal_keys=True)
-        decoded = json.loads(encoded)
+        encoded = pbjson.dumps(JSON, skip_illegal_keys=True)
+        decoded = pbjson.loads(encoded)
         self.assertEqual(JSON, decoded)
 
 if __name__ == '__main__':

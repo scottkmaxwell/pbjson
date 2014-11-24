@@ -1,13 +1,13 @@
 from unittest import TestCase, main
 
-import pbjson as json
+import pbjson
 
 
 class TestDefault(TestCase):
     def test_default(self):
         self.assertEqual(
-            json.dumps(type, convert=repr),
-            json.dumps(repr(type)))
+            pbjson.dumps(type, convert=repr),
+            pbjson.dumps(repr(type)))
 
 if __name__ == '__main__':
     main()
