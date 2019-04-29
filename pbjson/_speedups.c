@@ -582,7 +582,7 @@ decode_one(PyDecoder *decoder)
                     lenlen--;
                 }
             }
-            if (decoder->len < len) {
+            if (decoder->len < (int)len) {
                 set_overflow();
                 return NULL;
             }

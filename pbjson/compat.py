@@ -14,13 +14,9 @@ if sys.version_info[0] < 3:
     string_types = (basestring,)
     integer_types = (int, long)
     unichr = unichr
-    reload_module = reload
-    def fromhex(s):
-        return s.decode('hex')
 
 else:
     PY3 = True
-    from imp import reload as reload_module
     import codecs
     def b(s):
         return codecs.latin_1_encode(s)[0]
@@ -36,8 +32,5 @@ else:
 
     def unichr(s):
         return u(chr(s))
-
-    def fromhex(s):
-        return bytes.fromhex(s)
 
 long_type = integer_types[-1]

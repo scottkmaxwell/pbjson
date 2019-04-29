@@ -10,6 +10,11 @@ Usage::
 
 """
 import sys
+import pbjson
+import argparse
+import pprint
+from collections import OrderedDict
+
 try:
     # noinspection PyPackageRequirements
     import simplejson as json
@@ -17,10 +22,36 @@ try:
 except ImportError:
     import json
     does_unicode = False
-import pbjson
-import argparse
-import pprint
-from collections import OrderedDict
+try:
+    import yaml
+    try:
+        from yaml import CLoader as Loader, CDumper as Dumper
+    except ImportError:
+        from yaml import Loader, Dumper
+    from yaml.representer import SafeRepresenter
+    _mapping_tag = yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG
+
+    if sys.version_info[0] < 3:
+        def dict_representer(dumper, data):
+            return dumper.represent_dict(data.iteritems())
+    else:
+        def dict_representer(dumper, data):
+            return dumper.represent_dict(data.items())
+
+
+    def dict_constructor(loader, node):
+        return OrderedDict(loader.construct_pairs(node))
+
+
+    Dumper.add_representer(OrderedDict, dict_representer)
+    Loader.add_constructor(_mapping_tag, dict_constructor)
+
+    Dumper.add_representer(str, SafeRepresenter.represent_str)
+
+    if sys.version_info[0] < 3:
+        Dumper.add_representer(unicode, SafeRepresenter.represent_unicode)
+except Exception:
+    yaml = None
 
 
 def main():
@@ -29,6 +60,8 @@ def main():
         epilog='If converting a PBJSON file with binary elements, you may need to use `--repr` since JSON cannot handle binary data.')
     parser.add_argument('-r', '--repr', action='store_true', help='instead of converting to JSON, just output the `repr` of the object')
     parser.add_argument('-p', '--pretty', action='store_true', help='make it nice for humans')
+    if yaml is not None:
+        parser.add_argument('-y', '--yaml', action='store_true', help='input or output is YAML instead of JSON')
     parser.add_argument('infile', nargs='?', type=argparse.FileType('rb'), default=sys.stdin, help='filename to convert from or to pbjson (default: stdin)')
     parser.add_argument('outfile', nargs='?', type=argparse.FileType('wb'), default=sys.stdout, help='filename to write the converted file to (default: stdout)')
     args = parser.parse_args()
@@ -40,18 +73,30 @@ def main():
         text = None
 
     if text:
-        try:
-            obj = json.loads(text, object_pairs_hook=OrderedDict)
-        except ValueError:
-            raise SystemExit(sys.exc_info()[1])
+        if yaml is not None and args.yaml:
+            try:
+                obj = yaml.load(text, Loader=Loader)
+            except ValueError:
+                raise SystemExit(sys.exc_info()[1])
         else:
-            pbjson.dump(obj, args.outfile)
+            try:
+                obj = json.loads(text, object_pairs_hook=OrderedDict)
+            except ValueError:
+                if yaml is None:
+                    raise SystemExit(sys.exc_info()[1])
+                try:
+                    obj = yaml.load(text, Loader=Loader)
+                except ValueError:
+                    raise SystemExit(sys.exc_info()[1])
+        pbjson.dump(obj, args.outfile)
     else:
         try:
             obj = pbjson.loads(contents, document_class=OrderedDict)
         except ValueError:
             raise SystemExit(sys.exc_info()[1])
-        if args.repr:
+        if yaml is not None and args.yaml:
+            j = yaml.dump(obj, Dumper=Dumper)
+        elif args.repr:
             j = pprint.pformat(obj, indent=1) if args.pretty else repr(obj)
         else:
             kw = {'ensure_ascii': False} if does_unicode else {}

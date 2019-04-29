@@ -15,7 +15,7 @@ IS_PYPY = hasattr(sys, 'pypy_translation_info')
 VERSION = '1.11'
 DESCRIPTION = "Packed Binary JSON encoder/decoder for Python"
 
-with open('README.rst', 'r') as f:
+with open('README.md', 'r') as f:
     LONG_DESCRIPTION = f.read()
 
 CLASSIFIERS = filter(None, map(str.strip,
@@ -26,20 +26,23 @@ License :: OSI Approved :: MIT License
 License :: OSI Approved :: Academic Free License (AFL)
 Programming Language :: Python
 Programming Language :: Python :: 2
-Programming Language :: Python :: 2.5
-Programming Language :: Python :: 2.6
 Programming Language :: Python :: 2.7
 Programming Language :: Python :: 3
 Programming Language :: Python :: 3.3
+Programming Language :: Python :: 3.4
+Programming Language :: Python :: 3.5
+Programming Language :: Python :: 3.6
+Programming Language :: Python :: 3.7
+Programming Language :: Python :: 3.8
 Programming Language :: Python :: Implementation :: CPython
 Programming Language :: Python :: Implementation :: PyPy
 Topic :: Software Development :: Libraries :: Python Modules
 """.splitlines()))
 
 if sys.platform == 'win32' and sys.version_info > (2, 6):
-   # 2.6's distutils.msvc9compiler can raise an IOError when failing to
-   # find the compiler
-   # It can also raise ValueError http://bugs.python.org/issue7511
+    # 2.6's distutils.msvc9compiler can raise an IOError when failing to
+    # find the compiler
+    # It can also raise ValueError http://bugs.python.org/issue7511
     ext_errors = (CCompilerError, DistutilsExecError, DistutilsPlatformError,
                   IOError, ValueError)
 else:
@@ -103,18 +106,19 @@ def run_setup(with_binary):
         description=DESCRIPTION,
         long_description=LONG_DESCRIPTION,
         classifiers=CLASSIFIERS,
-        author="Bob Ippolito",
-        author_email="bob@redivi.com",
+        author="Scott Maxwell",
+        author_email="scott@codecobblers.com",
         url="http://github.com/pbjson/pbjson",
         license="MIT License",
         packages=['pbjson', 'pbjson.tests'],
         platforms=['any'],
         zip_safe=False,
-          entry_points="""\
+        entry_points="""\
           [console_scripts]
           pbjson = pbjson.tool:main
           """,
         **kw)
+
 
 try:
     run_setup(not IS_PYPY)
