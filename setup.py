@@ -12,10 +12,10 @@ from distutils.errors import CCompilerError, DistutilsExecError, \
     DistutilsPlatformError
 
 IS_PYPY = hasattr(sys, 'pypy_translation_info')
-VERSION = '1.11'
+VERSION = '1.14'
 DESCRIPTION = "Packed Binary JSON encoder/decoder for Python"
 
-with open('README.md', 'r') as f:
+with open('DESCRIPTION.rst', 'r') as f:
     LONG_DESCRIPTION = f.read()
 
 CLASSIFIERS = filter(None, map(str.strip,
@@ -108,7 +108,7 @@ def run_setup(with_binary):
         classifiers=CLASSIFIERS,
         author="Scott Maxwell",
         author_email="scott@codecobblers.com",
-        url="http://github.com/pbjson/pbjson",
+        url="https://github.com/scottkmaxwell/pbjson",
         license="MIT License",
         packages=['pbjson', 'pbjson.tests'],
         platforms=['any'],

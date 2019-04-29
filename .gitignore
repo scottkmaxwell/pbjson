@@ -15,3 +15,5 @@
 /pbjson.xcodeproj/project.xcworkspace/xcuserdata
 *.pbxuser
 *.perspectivev3
+/venv
+temp.pbj
