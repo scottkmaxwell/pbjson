@@ -80,7 +80,7 @@ Collection types: (length is number of elements)
 -  0C - terminated array
 -  0F - terminator
 
-The final entry, the “terminated array” works a bit differently. This is
+The final entry, the "terminated array" works a bit differently. This is
 for use when the length is not known when writing begins. Instead, a
 terminator (0F) is written to the stream when the last element of the
 array has been written.
@@ -91,8 +91,8 @@ keys are remembered by index. If the same key is used again, it can be
 represented as a single byte consisting of the high bit and the index
 number of the key.
 
-In other words, if the recurring key is “toast”, it should be encoded as
-05 toast. The next time the key “toast” is needed, it can be encoded as
+In other words, if the recurring key is "toast", it should be encoded as
+05 toast. The next time the key "toast" is needed, it can be encoded as
 simply 80, since it was the first key.
 
 Here is an example of a simple structure:
