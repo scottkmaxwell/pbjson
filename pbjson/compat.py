@@ -15,6 +15,7 @@ if sys.version_info[0] < 3:
     integer_types = (int, long)
     unichr = unichr
 
+    from collections import MutableMapping, Mapping
 else:
     PY3 = True
     import codecs
@@ -32,5 +33,7 @@ else:
 
     def unichr(s):
         return u(chr(s))
+
+    from collections.abc import MutableMapping, Mapping
 
 long_type = integer_types[-1]

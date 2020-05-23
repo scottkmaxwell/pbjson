@@ -8,9 +8,8 @@ __author__ = 'Scott Maxwell'
 from operator import itemgetter
 from decimal import Decimal
 from struct import pack
-from .compat import text_type, binary_type, string_types, integer_types, PY3
+from .compat import text_type, binary_type, string_types, integer_types, Mapping, PY3
 from .tokens import *
-from collections import Mapping
 
 
 def _import_speedups():
