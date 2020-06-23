@@ -2,11 +2,12 @@ __author__ = 'Scott Maxwell'
 
 import collections
 import pbjson
+from pbjson.compat import Mapping, MutableMapping
 from operator import itemgetter
 from unittest import TestCase, main
 
 
-class CaseInsensitiveDict(collections.MutableMapping):
+class CaseInsensitiveDict(MutableMapping):
     """
     A case-insensitive ``dict``-like object.
 
@@ -66,7 +67,7 @@ class CaseInsensitiveDict(collections.MutableMapping):
         )
 
     def __eq__(self, other):
-        if isinstance(other, collections.Mapping):
+        if isinstance(other, Mapping):
             other = CaseInsensitiveDict(other)
         else:
             return NotImplemented
