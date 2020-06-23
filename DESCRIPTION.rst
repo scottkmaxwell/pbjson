@@ -116,7 +116,7 @@ Here is an example of a simple structure:
    08 'toppings' C3 85 'jelly' 83 'jam' 86 'butter'
    0A 'dimensions' E2 09 'thickness' 68 3FE6666666666666 05 'width' 62 4012
 
-Let’s break that out:
+Let's break that out:
 
 -  00: E5 - dict with 5 elements
 -  01: 05 - key with 5 characters
@@ -194,7 +194,7 @@ This breaks down thus:
 -  22: 8D - string with 13 characters
 -  23-2F: United States
 -  30: E2 - dict with 2 elements
--  31: 82 - recurring key 2. Since ‘code’ was the 3rd key, it has an
+-  31: 82 - recurring key 2. Since 'code' was the 3rd key, it has an
    index of 2.
 -  32: 82 - string with 2 characters
 -  33-34: ca
