@@ -1,6 +1,5 @@
 __author__ = 'Scott Maxwell'
 
-import collections
 import pbjson
 from pbjson.compat import Mapping, MutableMapping
 from operator import itemgetter

@@ -1,4 +1,4 @@
-r"""JSON (JavaScript Object Notation) <http://json.org> is a subset of
+r"""JSON (JavaScript Object Notation) <https://json.org> is a subset of
 JavaScript syntax (ECMA-262 3rd edition) used as a lightweight data
 interchange format. PBJSON is a binary encoding for JSON.
 
@@ -56,7 +56,7 @@ Specializing JSON object encoding::
     >>> def encode_complex(obj):
     ...     if isinstance(obj, complex):
     ...         return [obj.real, obj.imag]
-    ...     raise TypeError(repr(o) + " is not JSON serializable")
+    ...     raise TypeError(repr(obj) + " is not JSON serializable")
     ...
     >>> pbjson.dumps(2 + 1j, converter=encode_complex)
     '[2.0, 1.0]'
@@ -82,6 +82,7 @@ __author__ = 'Scott Maxwell <scott@codecobblers.com>'
 
 from . import decoder
 from . import encoder
+from .decoder import PBJSONDecodeError
 
 
 def dump(obj, fp, skip_illegal_keys=False, check_circular=True, sort_keys=False, custom=None, convert=None, use_for_json=False):

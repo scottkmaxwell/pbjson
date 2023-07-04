@@ -89,15 +89,15 @@ def iterencode(obj, skip_illegal_keys=True, check_circular=True, sort_keys=None,
 
 # noinspection PyShadowingBuiltins
 def py_iterencoder(obj, Decimal, Mapping, skip_illegal_keys, check_circular, sort_keys, custom, convert, use_for_json,
-                    ## HACK: hand-optimized bytecode; turn globals into locals
-                    _PY3=PY3,
-                    ValueError=ValueError,
-                    string_types=string_types,
-                    float=float,
-                    id=id,
-                    integer_types=integer_types,
-                    isinstance=isinstance,
-                    str=str):
+                   # HACK: hand-optimized bytecode; turn globals into locals
+                   _PY3=PY3,
+                   ValueError=ValueError,
+                   string_types=string_types,
+                   float=float,
+                   id=id,
+                   integer_types=integer_types,
+                   isinstance=isinstance,
+                   str=str):
     key_cache = {}
     markers = {} if check_circular else None
     if custom and isinstance(custom[0], type):
@@ -296,6 +296,7 @@ def py_iterencoder(obj, Decimal, Mapping, skip_illegal_keys, check_circular, sor
                         del markers[markerid]
 
     return _iterencode(obj)
+
 
 c_iterencoder = _import_speedups()
 iterencoder = c_iterencoder or py_iterencoder

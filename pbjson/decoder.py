@@ -1,7 +1,5 @@
-from __future__ import absolute_import
-
 __author__ = 'Scott Maxwell'
-__all__ = ['decode']
+__all__ = ['decode', "PBJSONDecodeError"]
 
 # noinspection PyStatementEffect
 """Implementation of PBJSONDecoder"""
@@ -121,21 +119,21 @@ def py_decoder(data, document_class=None, float_class=None, custom=None, unicode
     document_class = document_class or dict
     keys = []
     context = {
-        FALSE: lambda context, data: (False, data),
-        TRUE: lambda context, data: (True, data),
-        NULL: lambda context, data: (None, data),
-        INF: lambda context, data: (float_class('inf'), data),
-        NEGINF: lambda context, data: (float_class('-inf'), data),
-        NAN: lambda context, data: (float_class('nan'), data),
+        FALSE: lambda _context, _data: (False, _data),
+        TRUE: lambda _context, _data: (True, _data),
+        NULL: lambda _context, _data: (None, _data),
+        INF: lambda _context, _data: (float_class('inf'), _data),
+        NEGINF: lambda _context, _data: (float_class('-inf'), _data),
+        NAN: lambda _context, _data: (float_class('nan'), _data),
         TERMINATED_LIST: _decode_list,
-        INT: lambda context, data: _decode_int(data),
-        NEGINT: lambda context, data: -_decode_int(data),
-        FLOAT: lambda context, data: _decode_float(float_class, data),
-        STRING: lambda context, data: data.decode(errors=unicode_errors),
-        BINARY: lambda context, data: data,
+        INT: lambda _context, _data: _decode_int(_data),
+        NEGINT: lambda _context, _data: -_decode_int(_data),
+        FLOAT: lambda _context, _data: _decode_float(float_class, _data),
+        STRING: lambda _context, _data: _data.decode(errors=unicode_errors),
+        BINARY: lambda _context, _data: _data,
         LIST: _decode_list,
-        DICT: lambda context, data, length: _decode_dict(context, document_class, keys, data, length),
-        CUSTOM: lambda context, data: _decode_custom(context, data, custom),
+        DICT: lambda _context, _data, length: _decode_dict(_context, document_class, keys, _data, length),
+        CUSTOM: lambda _context, _data: _decode_custom(_context, _data, custom),
     }
     return _decode_one(context, data)[0]
 

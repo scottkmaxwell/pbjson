@@ -4,17 +4,24 @@ import sys
 
 
 class OptionalExtensionTestSuite(unittest.TestSuite):
-    def run(self, result, debug=False):
+    def __init__(self, suite, test_no_speedups=False):
+        super(OptionalExtensionTestSuite, self).__init__(suite)
+        self.test_no_speedups = test_no_speedups
+
+    def run(self, result, test_no_speedups=False):
         import pbjson
         run = unittest.TestSuite.run
-        for i in range(1):
+        if not self.test_no_speedups:
             run(self, result)
-            if not pbjson._has_encoder_speedups() and not pbjson._has_decoder_speedups():
-                TestMissingSpeedups().run(result)
-            else:
-                pbjson._toggle_speedups(False)
-                run(self, result)
-                pbjson._toggle_speedups(True)
+            return result
+
+        if not pbjson._has_encoder_speedups() and not pbjson._has_decoder_speedups():
+            print("Testing with missing speedups")
+            TestMissingSpeedups().run(result)
+        else:
+            pbjson._toggle_speedups(False)
+            run(self, result)
+            pbjson._toggle_speedups(True)
         return result
 
 
@@ -38,7 +45,7 @@ class TestMissingSpeedups(unittest.TestCase):
 #     return suite
 
 
-def all_tests_suite():
+def all_tests_suite(test_no_speedups=False):
     suite = unittest.TestLoader().loadTestsFromNames([
         'pbjson.tests.test_check_circular',
         'pbjson.tests.test_custom',
@@ -56,12 +63,15 @@ def all_tests_suite():
         'pbjson.tests.test_tuple',
     ])
     # suite = additional_tests(suite)
-    return OptionalExtensionTestSuite([suite])
+    return OptionalExtensionTestSuite([suite], test_no_speedups=test_no_speedups)
 
 
 def main():
     runner = unittest.TextTestRunner(verbosity=1 + sys.argv.count('-v'))
     suite = all_tests_suite()
+    if not runner.run(suite).wasSuccessful():
+        raise SystemExit(1)
+    suite = all_tests_suite(True)
     raise SystemExit(not runner.run(suite).wasSuccessful())
 
 
