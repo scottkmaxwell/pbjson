@@ -1460,7 +1460,6 @@ encode_dict(PyEncoder *encoder, PyObject *dct)
     PyObject *item = NULL;
     PyObject *items = NULL;
     PyObject *encoded = NULL;
-    Py_ssize_t idx;
 
     int len = PyMapping_Size(dct);
     if (encode_type_and_length(encoder, Enc_DICT, len)) {
@@ -1476,7 +1475,6 @@ encode_dict(PyEncoder *encoder, PyObject *dct)
         if (iter == NULL)
             goto bail;
         
-        idx = 0;
         while ((item = PyIter_Next(iter))) {
             PyObject *encoded, *key, *value;
             if (!PyTuple_Check(item) || Py_SIZE(item) != 2) {
@@ -1503,7 +1501,6 @@ encode_dict(PyEncoder *encoder, PyObject *dct)
             if (encode_one(encoder, value))
                 goto bail;
             Py_CLEAR(item);
-            idx += 1;
         }
         Py_CLEAR(iter);
         if (PyErr_Occurred())

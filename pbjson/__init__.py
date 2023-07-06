@@ -72,7 +72,7 @@ Using pbjson.tool from the shell to validate and pretty-print::
     Expecting property name: line 1 column 3 (char 2)
 """
 from __future__ import absolute_import
-__version__ = '1.16.0'
+__version__ = '1.18.0'
 __all__ = [
     'dump', 'dumps', 'load', 'loads',
     'PBJSONDecodeError',

@@ -3,7 +3,7 @@ pbjson
 
 Packed Binary JSON extension for Python
 
-`pbjson` is a packed binary JSON encoder and decoder for Python 2.5+ and Python 3.3+. It is pure Python code with no dependencies, but includes an optional C extension for a serious speed boost.
+`pbjson` is a packed binary JSON encoder and decoder for Python 2.6+ and Python 3.3+. It is pure Python code with no dependencies, but includes an optional C extension for a serious speed boost.
 
 `pbjson` can be used standalone or as an extension to the standard `json` module or to `simplejson`, from which code was heavily borrowed. The latest documentation for `simplejson` can be read online here:
 <http://simplejson.readthedocs.org/>
@@ -12,6 +12,17 @@ The encoder can be specialized to provide serialization in any kind of situation
 
 The decoder can handle incoming JSON strings of any specified encoding (UTF-8 by default). It can also be specialized to post-process JSON objects with the `object_hook` or `object_pairs_hook` kwargs. This
 is particularly useful for implementing protocols that have a richer type system than JSON itself.
+
+Using the API
+-------------
+
+The `pbjson` module works ust like the `json` module. You can `pbjson.load`, `pbjson.loads`, `pbjson.dump`, and `pbjson.dumps`.
+
+Command-Line Tool
+-----------------
+
+After you have installed `pbjson`, you can use the `pbjson` command-line tool to convert files to or from `pbjson`.
+Run `pbjson -h` for details.
 
 What is Packed Binary JSON (`PBJSON`)
 -----------------------------------
@@ -70,7 +81,7 @@ Here is an example of a simple structure:
 
     E5 05 'toast' 01 06 'burned' 00 04 'name' 88 'the best'
     08 'toppings' C3 85 'jelly' 83 'jam' 86 'butter'
-    0A 'dimensions' E2 09 'thickness' 68 3FE6666666666666 05 'width' 62 4012
+    0A 'dimensions' E2 09 'thickness' 61 d7 05 'width' 62 4d5d
 
 Let's break that out:
 
@@ -99,14 +110,14 @@ Let's break that out:
 - 44: E3 - dict with 2 elements
 - 45: 09 - key with 9 characters
 - 46-4E: thickness
-- 4F: 68 - float with 8 bytes
-- 50-57: IEEE representation of .7
-- 58: 05 - key with 5 characters
-- 59-5D: width
-- 5E: 62 - float with 2 bytes
-- 5F-60: first 2 bytes of IEEE representation of 4.5. Remaining 6 bytes were all zeros.
+- 4F: 61 - float with 1 bytes
+- 50: first byte of IEEE representation of .7. Remaining 7 bytes were all zeros.
+- 51: 05 - key with 5 characters
+- 52-56: width
+- 57: 62 - float with 2 bytes
+- 58-59: first 2 bytes of IEEE representation of 4.5. Remaining 6 bytes were all zeros.
 
-Total 97 bytes. The tightest `JSON` representation requires 126 bytes. Marshal takes 153 bytes. Pickle takes 184 bytes. BSON takes 145 bytes.
+Total 90 bytes. The tightest `JSON` representation requires 126 bytes. Marshal takes 153 bytes. Pickle takes 184 bytes. BSON takes 145 bytes.
 
 Now here is an example with repeating data:
 

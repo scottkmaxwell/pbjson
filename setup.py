@@ -1,22 +1,25 @@
 #!/usr/bin/env python
 from __future__ import with_statement
 
+import os
 import sys
 try:
     from setuptools import setup, Extension, Command
-    from setuptools.command.build_ext import build_ext
 except ImportError:
     from distutils.core import setup, Extension, Command
-    from distutils.command.build_ext import build_ext
+from distutils.command.build_ext import build_ext
 from distutils.errors import CCompilerError, DistutilsExecError, \
     DistutilsPlatformError
 
+from pbjson import __version__ as VERSION
+
 IS_PYPY = hasattr(sys, 'pypy_translation_info')
-VERSION = '1.16.0'
 DESCRIPTION = "Packed Binary JSON encoder/decoder for Python"
 
 with open('DESCRIPTION.rst', 'r') as f:
     LONG_DESCRIPTION = f.read()
+
+PYTHON_REQUIRES = '>=2.5, !=3.0.*, !=3.1.*, !=3.2.*'
 
 CLASSIFIERS = [
     "Development Status :: 5 - Production/Stable",
@@ -43,10 +46,10 @@ CLASSIFIERS = [
     "Operating System :: OS Independent",
 ]
 
-if sys.platform == 'win32' and sys.version_info > (2, 6):
+if sys.platform == 'win32' and sys.version_info < (2, 7):
     # 2.6's distutils.msvc9compiler can raise an IOError when failing to
     # find the compiler
-    # It can also raise ValueError http://bugs.python.org/issue7511
+    # It can also raise ValueError https://bugs.python.org/issue7511
     ext_errors = (CCompilerError, DistutilsExecError, DistutilsPlatformError,
                   IOError, ValueError)
 else:
@@ -110,21 +113,23 @@ def run_setup(with_binary):
         description=DESCRIPTION,
         long_description=LONG_DESCRIPTION,
         classifiers=CLASSIFIERS,
+        python_requires=PYTHON_REQUIRES,
         author="Scott Maxwell",
         author_email="scott@codecobblers.com",
         url="https://github.com/scottkmaxwell/pbjson",
+        license="MIT License",
         packages=['pbjson', 'pbjson.tests'],
         platforms=['any'],
         zip_safe=False,
         entry_points="""\
           [console_scripts]
-          pbjson = pbjson.tool:main
+          pbjson = pbjson.__main__:main
           """,
         **kw)
 
 
 try:
-    run_setup(not IS_PYPY)
+    run_setup(not IS_PYPY and os.environ.get('DISABLE_SPEEDUPS') != '1')
 except BuildFailed:
     BUILD_EXT_WARNING = ("WARNING: The C extension could not be compiled, "
                          "speedups are not enabled.")

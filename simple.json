@@ -1,0 +1,10 @@
+{
+    "toast": true,
+    "burned": false,
+    "name": "the best",
+    "toppings": ["jelly","jam","butter"],
+    "dimensions": {
+        "thickness": 0.7,
+        "width": 4.5
+    }
+}

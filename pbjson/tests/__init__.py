@@ -20,6 +20,7 @@ class OptionalExtensionTestSuite(unittest.TestSuite):
             TestMissingSpeedups().run(result)
         else:
             pbjson._toggle_speedups(False)
+            print("Testing without speedups")
             run(self, result)
             pbjson._toggle_speedups(True)
         return result

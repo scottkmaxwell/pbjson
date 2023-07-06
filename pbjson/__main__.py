@@ -62,7 +62,7 @@ def main():
     parser.add_argument('-p', '--pretty', action='store_true', help='make it nice for humans')
     if yaml is not None:
         parser.add_argument('-y', '--yaml', action='store_true', help='input or output is YAML instead of JSON')
-    parser.add_argument('infile', nargs='?', type=argparse.FileType('rb'), default=sys.stdin, help='filename to convert from or to pbjson (default: stdin)')
+    parser.add_argument('infile', type=argparse.FileType('rb'), help='filename to convert from or to pbjson')
     parser.add_argument('outfile', nargs='?', type=argparse.FileType('wb'), default=sys.stdout, help='filename to write the converted file to (default: stdout)')
     args = parser.parse_args()
 

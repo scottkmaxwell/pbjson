@@ -1,18 +1,27 @@
-PBJSON uses hatch: https://hatch.pypa.io/latest/environment/
-
-To run tests:
+Set up an virtual environment and set up develop mode:
 ```shell
-hatch shell
-python pbjson/tests/__init__.py
-```
-
-Check version:
-```shell
-hatch version
+python -m venv venv
+. venv/bin/activate
+pip install twine
+python setup.py develop
 ```
 
 Build:
 ```shell
-hatch build
+python setup.py bdist
 ```
 
+Run tests:
+```shell
+python setup.py test
+```
+
+Publishing:
+
+- Create `.pypirc`. See https://packaging.python.org/en/latest/guides/distributing-packages-using-setuptools/#create-an-account
+- Then:
+```shell
+rm -rf dist
+python setup.py sdist
+twine upload dist/*
+```
