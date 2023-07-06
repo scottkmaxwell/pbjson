@@ -12,36 +12,36 @@ from distutils.errors import CCompilerError, DistutilsExecError, \
     DistutilsPlatformError
 
 IS_PYPY = hasattr(sys, 'pypy_translation_info')
-VERSION = '1.15'
+VERSION = '1.16.0'
 DESCRIPTION = "Packed Binary JSON encoder/decoder for Python"
 
 with open('DESCRIPTION.rst', 'r') as f:
     LONG_DESCRIPTION = f.read()
 
-CLASSIFIERS = list(filter(None, map(str.strip,
-"""
-Development Status :: 5 - Production/Stable
-Intended Audience :: Developers
-License :: OSI Approved :: MIT License
-License :: OSI Approved :: Academic Free License (AFL)
-Programming Language :: Python
-Programming Language :: Python :: 2
-Programming Language :: Python :: 2.7
-Programming Language :: Python :: 3
-Programming Language :: Python :: 3.3
-Programming Language :: Python :: 3.4
-Programming Language :: Python :: 3.5
-Programming Language :: Python :: 3.6
-Programming Language :: Python :: 3.7
-Programming Language :: Python :: 3.8
-Programming Language :: Python :: 3.9
-Programming Language :: Python :: 3.10
-Programming Language :: Python :: 3.11
-Programming Language :: Python :: 3.12
-Programming Language :: Python :: Implementation :: CPython
-Programming Language :: Python :: Implementation :: PyPy
-Topic :: Software Development :: Libraries :: Python Modules
-""".splitlines())))
+CLASSIFIERS = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Academic Free License (AFL)",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 2",
+    "Programming Language :: Python :: 2.7",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.3",
+    "Programming Language :: Python :: 3.4",
+    "Programming Language :: Python :: 3.5",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Operating System :: OS Independent",
+]
 
 if sys.platform == 'win32' and sys.version_info > (2, 6):
     # 2.6's distutils.msvc9compiler can raise an IOError when failing to
@@ -113,7 +113,6 @@ def run_setup(with_binary):
         author="Scott Maxwell",
         author_email="scott@codecobblers.com",
         url="https://github.com/scottkmaxwell/pbjson",
-        license="MIT License",
         packages=['pbjson', 'pbjson.tests'],
         platforms=['any'],
         zip_safe=False,

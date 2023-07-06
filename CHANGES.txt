@@ -7,3 +7,7 @@ Version 1.12 released 2019-04-29
 
  * Updated to support latest Python
  * Added support for reading and writing YAML files
+
+Version 1.16 released 2023-07-05
+
+* Updated to support Python 3.11
