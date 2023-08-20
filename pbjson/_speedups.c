@@ -640,6 +640,7 @@ py_decode(PyObject* self UNUSED, PyObject *args, PyObject *kwds)
     decoder.keys = NULL;
     PyObject *result = decode_one(&decoder);
     Py_CLEAR(decoder.keys);
+    PyBuffer_Release(&buf);
     return result;
 }
 

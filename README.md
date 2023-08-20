@@ -40,6 +40,9 @@ Zero-length Data Types:
 - 00 - false
 - 01 - true
 - 02 - null
+- 03 - infinity
+- 04 - negative infinity
+- 05 - NaN (not a number)
 
 All other types are variable length. If the length is between 0 and 15, that length is stored in bits 0-3. For lengths in the 16-2047 range, bit 4 is set and bits 0-2 are combined with the next byte to make an 11-bit length. If bits 4 and 3 are both set, then the value in bits 0-2 are combined with the next 2 bytes to create a 19-bit length. However, if bits 4-0 are all set, this indicates that the following 4 bytes are simply used as a size. So the token plus length is, one byte (length of 0-15), two bytes (16-2047), three bytes (2048-458751) or five bytes (458876-4294967295).
 
